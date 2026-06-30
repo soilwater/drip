@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<title>Daily Irrigation Planner</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --mw:   920px;
+  --g:    #5816a3;
+  --g-hov:#4a12a0;
+  --g-soft:rgba(88,22,163,.10);
+  --glt:  #f3e8ff;
+  --gbdr: #ddd6fe;
+  --amb:  #d97706;
+  --amlt: #fffbeb;
+  --ambdr:#fde68a;
+  --pvlt: #fcfcfc;
+  --pvbdr:#e9d5ff;
+  --red:  #dc2626;
+  --bdr:  #e2e8f0;
+  --txt:  #0f172a;
+  --mut:  #64748b;
+  --sllt: #f8fafc;
+  --shd:  0 1px 3px rgba(0,0,0,.08);
+  --teal: #0d9488;
+  --tealt:rgba(13,148,136,.09);
+  --obs: #16a34a;
+  --fut: #2563eb;
+  --kc-curve: #16a34a;  /* Kc editor curve — green in light mode */
+  --kc-label: #16a34a;  /* Kc value labels — green in light mode */
+  /* surfaces */
+  --bg-page:   #eef2f7;
+  --bg-card:   #ffffff;
+  --bg-input:  #ffffff;
+  --bg-header: #ffffff;
+}
+
+[data-theme="dark"] {
+  --g:      #a78bfa;
+  --g-hov:  #c4b5fd;
+  --g-soft: rgba(167,139,250,.15);
+  --glt:    #2e1a4a;
+  --gbdr:   #4c3380;
+  --amb:    #fbbf24;
+  --amlt:   #2a1f00;
+  --ambdr:  #78500a;
+  --pvlt:   #1e1e2e;
+  --pvbdr:  #ffffff;
+  --red:    #f87171;
+  --bdr:    #334155;
+  --txt:    #e2e8f0;
+  --mut:    #94a3b8;
+  --sllt:   #1e293b;
+  --shd:    0 1px 3px rgba(0,0,0,.35);
+  --teal:   #2dd4bf;
+  --tealt:  rgba(45,212,191,.10);
+  --obs:    #4ade80;
+  --fut:    #60a5fa;
+  --kc-curve: #5816a3;  /* light-mode button purple — stands out on dark background */
+  --kc-label: #ffffff;  /* white so Kc values are readable against dark background */
+  --bg-page:   #0f172a;
+  --bg-card:   #1e293b;
+  --bg-input:  #0f172a;
+  --bg-header: #1e293b;
+}
+
+/* ── Theme toggle button ── */
+.theme-toggle{
+  background:none;border:1.5px solid var(--bdr);border-radius:20px;
+  padding:4px 10px;font-size:14px;cursor:pointer;color:var(--mut);
+  transition:border-color .12s,color .12s,background .12s;
+  line-height:1;display:flex;align-items:center;gap:5px;
+}
+.theme-toggle:hover{border-color:var(--g);color:var(--txt);}
+
+/* smooth theme transition on key surfaces only (avoid janky repaints on SVG) */
+body,header,.card,.grp,
+select,input[type=date],input[type=number],
+.seg button,.btn-sm,.btn-go,.sitem,
+.map-modal-box,.rain-input{
+  transition:background .2s,color .2s,border-color .2s;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:16px;background:var(--bg-page);color:var(--txt);line-height:1.5;font-feature-settings:'tnum' 1;-webkit-font-smoothing:antialiased;}
+
+/* ── Header ── */
+header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1px solid var(--bdr);}
+.header-inner{max-width:var(--mw);margin:0 auto;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:14px;}
+.header-right{font-size:13px;color:var(--mut);display:flex;align-items:center;gap:12px;}
+.header-right a{color:var(--mut);text-decoration:none;}
+.header-right a:hover{color:var(--txt);}
+/* In dark mode: invert the logo so dark text becomes light, then hue-rotate
+   to preserve the purple/green brand colours approximately */
+[data-theme="dark"] .header-logo{filter:invert(1) hue-rotate(180deg);}
+
+/* ── Wrapper ── */
+.wrap{max-width:var(--mw);margin:0 auto;padding:16px 14px 52px;}
+.card{background:var(--bg-card);border:1px solid var(--bdr);border-radius:8px;padding:18px 20px;margin-bottom:12px;box-shadow:var(--shd);}
+.ctitle{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--g);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--bdr);}
+
+/* ── Setup grid ── */
+.setup-outer{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:stretch;}
+.setup-col{display:flex;flex-direction:column;gap:12px;}
+.setup-col .grp:last-child{flex:1;display:flex;flex-direction:column;}
+
+/* ── Input groups ── */
+.grp{border-radius:7px;padding:14px 16px;border:1px solid transparent;}
+.gtitle{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin-bottom:12px;}
+.grp-loc {background:var(--pvlt);border-color:var(--pvbdr);}
+.grp-crop{background:var(--pvlt);border-color:var(--pvbdr);}
+.grp-soil{background:var(--pvlt);border-color:var(--pvbdr);}
+.grp-pvt {background:var(--pvlt);border-color:var(--pvbdr);}
+
+.fg  {display:grid;gap:10px;}
+.fg-2{grid-template-columns:1fr 1fr;}
+
+label{display:block;font-size:14px;font-weight:600;color:var(--mut);margin-bottom:5px;white-space:nowrap;}
+select,input[type=date],input[type=number]{
+  width:100%;padding:9px 11px;font-size:16px;font-family:inherit;
+  border:1.5px solid var(--bdr);border-radius:5px;background:var(--bg-input);color:var(--txt);
+  font-variant-numeric:tabular-nums;
+  transition:border-color .12s,box-shadow .12s;
+}
+select:hover,input:hover{border-color:#d1d5db;}
+select:focus,input:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px var(--g-soft);}
+.radio-row input[type=radio]{accent-color:var(--g);}
+
+.radio-row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:4px 0;}
+.radio-row label{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:500;color:var(--txt);margin:0;white-space:nowrap;}
+.radio-row input[type=radio]{width:16px;height:16px;margin:0;}
+
+/* ── MAD segmented buttons ── */
+.seg{display:flex;border:1.5px solid var(--bdr);border-radius:5px;overflow:hidden;margin-top:2px;}
+.seg button{flex:1;padding:9px 4px;font-size:15px;font-family:inherit;font-weight:600;border:none;border-right:1.5px solid var(--bdr);background:var(--bg-card);color:var(--mut);cursor:pointer;transition:background .12s,color .12s;}
+.seg button:last-child{border-right:none;}
+.seg button:hover{background:var(--sllt);color:var(--txt);}
+.seg button.on{background:var(--g);color:#fff;}
+.seg button.on:hover{background:var(--g-hov);}
+
+/* ── Kc editor ── */
+.kc-wrap{margin-top:12px;flex:1;display:flex;flex-direction:column;}
+.kc-hdr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+.kc-hdr label{margin:0;font-size:14px;}
+.kc-total{font-size:13px;color:var(--mut);}
+#kcSvg{display:block;width:100%;flex:1;min-height:160px;border:1.5px solid var(--bdr);border-radius:6px;background:var(--sllt);touch-action:none;}
+.kc-hint{font-size:12px;color:var(--mut);margin-top:5px;}
+
+/* ── Revolution time display ── */
+.rev-display{font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums;padding:7px 10px;background:var(--sllt);border-radius:5px;border:1px solid var(--bdr);}
+.rev-display strong{color:var(--txt);font-weight:600;}
+
+/* ── Chart card header ── */
+.chart-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+.chart-hdr .ctitle{margin:0;border:none;padding:0;}
+
+/* ── Chart mode toggle ── */
+.chart-toggle{display:flex;border:1.5px solid var(--bdr);border-radius:4px;overflow:hidden;}
+.chart-toggle button{padding:4px 12px;font-size:11px;font-family:inherit;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border:none;border-right:1.5px solid var(--bdr);background:var(--bg-card);color:var(--mut);cursor:pointer;transition:background .12s,color .12s;}
+.chart-toggle button:last-child{border-right:none;}
+.chart-toggle button.on{background:var(--g);color:#fff;}
+
+
+/* ── Buttons ── */
+.btn-go{background:var(--g);color:#fff;border:2px solid var(--g);border-radius:6px;padding:11px 26px;font-size:16px;font-family:inherit;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s;}
+.btn-go:hover{background:var(--g-hov);border-color:var(--g-hov);}
+.btn-go.loading{background:var(--bg-card);color:var(--g);border:2px solid var(--g);cursor:default;}
+.btn-go:disabled{opacity:.7;}
+.btn-sm{background:var(--bg-card);color:var(--mut);border:1.5px solid var(--bdr);border-radius:4px;padding:6px 14px;font-size:14px;font-family:inherit;cursor:pointer;transition:border-color .12s,background .12s;}
+.btn-sm:hover{border-color:var(--mut);background:var(--sllt);}
+.action-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;}
+.action-row .hint{font-size:13px;color:var(--mut);}
+
+/* ── Results header (title + action buttons) ── */
+.results-hdr{
+  display:flex;justify-content:space-between;align-items:center;
+  flex-wrap:wrap;gap:8px;margin-bottom:10px;
+}
+#resultsTitle{font-size:13px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;}
+
+/* ── Collapsible details panel ── */
+details.analytics{margin-bottom:0;}
+summary.analytics-toggle{
+  cursor:pointer;list-style:none;
+  display:flex;align-items:center;gap:8px;
+  font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--mut);padding:10px 0 6px;
+  user-select:none;
+}
+summary.analytics-toggle::-webkit-details-marker{display:none;}
+summary.analytics-toggle::before{content:'▸';font-size:10px;transition:transform .2s;display:inline-block;}
+details[open] summary.analytics-toggle::before{transform:rotate(90deg);}
+
+/* ── Summary tiles ── */
+.sum-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(95px,1fr));gap:6px;}
+.sitem{background:var(--sllt);border:1px solid var(--bdr);border-radius:5px;padding:7px 9px;text-align:center;}
+.sval{font-size:1.05em;font-weight:700;color:var(--txt);}
+.sval.ok{color:var(--g);} .sval.warn{color:var(--amb);} .sval.bad{color:var(--red);}
+.slbl{font-size:11px;color:var(--mut);margin-top:2px;text-transform:uppercase;letter-spacing:.04em;}
+
+/* ── Charts ── */
+.ct-top{position:relative;height:210px;}
+.ct-bot{position:relative;height:115px;margin-top:8px;}
+/* ── Table ── */
+.tscroll{overflow-x:auto;}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums;}
+thead th{background:var(--sllt);color:var(--mut);padding:7px 8px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bdr);white-space:nowrap;}
+thead th.tl{text-align:left;}
+tbody td{padding:6px 8px;text-align:right;border-bottom:1px solid #f1f5f9;white-space:nowrap;vertical-align:middle;}
+tbody td.tl{text-align:left;}
+tbody tr:hover{background:var(--sllt)!important;}
+td.rain-cell{cursor:text;}
+td.rain-cell:hover{background:var(--g-soft)!important;}
+
+.r-irr{background:#fff7ed;} .r-run{background:#f7fbff;} .r-str{background:#fef3c7;}
+[data-theme="dark"] .r-irr{background:#2a1800;}
+[data-theme="dark"] .r-run{background:#0c1a2e;}
+[data-theme="dark"] .r-str{background:#2a1f00;}
+tr.obs td:first-child{border-left:3px solid var(--obs);}
+tr.fut td:first-child{border-left:3px solid var(--fut);}
+tr.fut td{color:#64748b;} tr.fut .tag{opacity:1;}
+
+.tag{display:inline-block;padding:3px 9px;border-radius:3px;font-size:13px;font-weight:700;white-space:nowrap;}
+.tag-ok  {background:var(--glt); color:var(--g);}
+.tag-lim {background:#fff7ed;    color:#92400e;}  /* threshold crossed end-of-day */
+.tag-irr {background:#fff7ed;    color:#c2410c;}
+.tag-run {background:#e0f2fe;    color:#0369a1;}
+.tag-str {background:var(--amlt);color:var(--amb);}
+.tag-aloc{background:#fdf4ff;    color:#7e22ce;}  /* allocation exhausted */
+
+/* (allocation progress shown in summary tiles only) */
+
+td.rain-edited{background:var(--tealt)!important;position:relative;}
+td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-align:super;margin-left:2px;}
+.rain-input{width:58px;padding:3px 5px;font-size:14px;font-family:inherit;border:1.5px solid var(--g);border-radius:3px;text-align:center;background:var(--bg-input);color:var(--txt);}
+
+.legend{display:flex;gap:13px;flex-wrap:wrap;font-size:14px;color:var(--mut);margin-bottom:10px;}
+.legend span{display:flex;align-items:center;gap:5px;}
+.lb{display:inline-block;width:12px;height:12px;border-radius:2px;}
+.note{font-size:13px;color:var(--mut);margin-top:12px;line-height:1.7;}
+#results{display:none;}
+
+/* ── Responsive: tablet (≤ 700px) ── */
+@media (max-width: 700px) {
+  /* Setup collapses to single column */
+  .setup-outer{grid-template-columns:1fr;}
+
+  /* Kc crop group no longer needs to stretch to fill column */
+  .setup-col .grp:last-child{flex:none;}
+
+  /* Give Kc chart a fixed comfortable height instead of flex-grow */
+  .kc-wrap{flex:none;}
+  #kcSvg{min-height:180px;max-height:220px;}
+
+  /* Inner 2-col grids collapse to single column */
+  .fg-2{grid-template-columns:1fr;}
+
+  /* Radio options wrap naturally */
+  .radio-row label{white-space:normal;}
+
+  /* Slightly tighter card padding */
+  .card{padding:14px 14px;}
+  .grp{padding:12px 13px;}
+
+  /* Summary tiles: 2 per row minimum */
+  .sum-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));}
+
+  /* Shorter charts on mobile */
+  .ct-top{height:170px;}
+  .ct-bot{height:95px;}
+
+  /* Table font slightly smaller to reduce horizontal scroll */
+  table{font-size:12px;}
+  thead th{padding:6px 6px;font-size:10px;}
+  tbody td{padding:5px 6px;}
+
+  /* Results title wraps gracefully */
+  .results-hdr{flex-direction:column;align-items:flex-start;gap:6px;}
+}
+
+/* ── Responsive: phone (≤ 420px) ── */
+@media (max-width: 420px) {
+  body{font-size:15px;}
+  .card{padding:12px 12px;}
+  .grp{padding:11px 12px;}
+
+  /* Keep crop + date side by side on phones — they fit */
+  /* Everything else single column already from 700px breakpoint */
+
+  /* Make the generate button full width */
+  .btn-go{width:100%;text-align:center;}
+
+  /* Smaller charts */
+  .ct-top{height:150px;}
+  .ct-bot{height:80px;}
+
+  /* Hide secondary table columns — keep Date, Rain, ETc, TAW%, Status */
+  .mob-hide{display:none!important;}
+}
+
+@media print{
+  .no-print{display:none!important;}
+  /* Strip all page chrome to prevent blank first page */
+  header{display:none!important;}
+  body{background:#fff;margin:0;padding:0;}
+  .wrap{padding:0;margin:0;}
+  #results{padding:0;margin:0;}
+  /* Hide everything except the table card */
+  .results-hdr,details.analytics,
+  .card:not(#tableCard){display:none!important;}
+  #tableCard{display:block!important;box-shadow:none;border:1px solid #ccc;margin:0;page-break-inside:auto;}
+  thead th,.r-irr,.r-str,.r-run{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  tr.obs td:first-child{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  /* Ensure table stays together where possible */
+  thead{display:table-header-group;}
+  tbody tr{page-break-inside:avoid;}
+}
+/* ── About modal ── */
+#aboutModal .map-modal-box{width:480px;max-height:85vh;overflow-y:auto;}
+.about-section{margin-bottom:20px;}
+.about-section h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--bdr);}
+.about-dl{display:flex;flex-direction:column;gap:8px;}
+.about-row{display:grid;grid-template-columns:130px 1fr;gap:10px;font-size:14px;line-height:1.6;}
+.about-row dt{font-weight:600;color:var(--txt);padding-top:1px;}
+.about-row dd{color:var(--mut);margin:0;}
+.about-row dd a{color:var(--g);text-decoration:none;}
+.about-row dd a:hover{text-decoration:underline;}
+.license-box{background:var(--sllt);border-left:3px solid var(--g);border-radius:0 4px 4px 0;padding:12px 14px;font-size:13px;line-height:1.75;color:var(--txt);}
+.license-box p{margin-bottom:8px;}
+.license-box p:last-child{margin-bottom:0;color:var(--mut);}
+
+/* ── Specs modal ── */
+#specsModal .map-modal-box{width:620px;max-height:82vh;display:flex;flex-direction:column;}
+#specsModal h3{margin:0 0 14px;font-size:17px;color:var(--txt);}
+#specsContent{
+  flex:1;overflow-y:auto;
+  font-family:'SF Mono',ui-monospace,'Cascadia Code',monospace;
+  font-size:12.5px;line-height:1.75;
+  background:var(--sllt);border:1px solid var(--bdr);
+  border-radius:6px;padding:14px 16px;
+  color:var(--txt);white-space:pre;
+}
+#specsContent .specs-section{color:var(--g);font-weight:700;}
+
+/* ── Toast notification ── */
+#toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);
+  background:var(--txt);color:var(--bg-card);
+  padding:10px 20px;border-radius:6px;font-size:14px;font-weight:500;
+  white-space:nowrap;pointer-events:none;
+  opacity:0;transition:opacity .2s,transform .2s;z-index:9999;
+  box-shadow:0 4px 12px rgba(0,0,0,.25);
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+.map-modal-overlay{position:fixed;inset:0;z-index:999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;}
+.map-modal-box{background:var(--bg-card);border-radius:10px;padding:20px;width:580px;max-width:96vw;box-shadow:0 8px 32px rgba(0,0,0,.35);}
+.map-modal-box h3{margin:0 0 14px;font-size:17px;color:var(--txt);}
+#leafletMap{height:320px;border-radius:6px;border:1px solid var(--bdr);margin:12px 0;}
+.map-coords{font-size:12px;color:var(--mut);margin-bottom:12px;}
+.map-modal-btns{display:flex;gap:8px;justify-content:flex-end;}label[title]{cursor:help;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <img src="logo-header_v3.svg" alt="Daily Irrigation Planner" height="54" class="header-logo">
+    <div class="header-right">
+      <button class="theme-toggle no-print" onclick="toggleTheme()" id="themeBtn" title="Toggle light/dark theme">🌙 Dark</button>
+      <a href="#" onclick="document.getElementById('aboutModal').style.display='flex';return false;">About</a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ══════════  SETUP  ══════════ -->
+<div class="card no-print">
+  <div class="setup-outer">
+
+    <!-- LEFT: Location + Crop & Season -->
+    <div class="setup-col">
+
+      <div class="grp grp-loc">
+        <div class="gtitle">Location</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span id="locName" style="flex:1;font-size:15px;font-weight:500;color:var(--txt);">Manhattan, KS</span>
+          <button type="button" class="btn-sm" onclick="openMapModal()">Change location</button>
+        </div>
+        <div id="locCoords" style="font-size:12px;color:var(--mut);margin-top:3px;">39.1836° N, 96.5717° W</div>
+      </div>
+
+      <div class="grp grp-crop">
+        <div class="gtitle">Crop &amp; Season</div>
+        <div class="fg fg-2" style="margin-bottom:10px;">
+          <div>
+            <label>Crop</label>
+            <select id="crop" onchange="onCropChange()">
+              <option value="corn">Corn</option>
+              <option value="soybean">Soybean</option>
+              <option value="sorghum">Grain Sorghum</option>
+              <option value="winterWheat">Winter Wheat</option>
+              <option value="sunflower">Sunflower</option>
+            </select>
+          </div>
+          <div>
+            <label>Planting Date</label>
+            <input type="date" id="plantingDate">
+          </div>
+        </div>
+        <div class="kc-wrap">
+          <div class="kc-hdr">
+            <label>Kc Curve</label>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="kc-total" id="kcTotalLabel"></span>
+              <button type="button" onclick="onCropChange()" style="font-size:11px;padding:2px 8px;background:#fff;border:1px solid var(--pvbdr);border-radius:3px;color:var(--mut);cursor:pointer;font-family:inherit;">Reset</button>
+            </div>
+          </div>
+          <svg id="kcSvg" viewBox="0 0 500 160" preserveAspectRatio="none"></svg>
+          <p class="kc-hint">Drag ● up/down → Kc value &nbsp;·&nbsp; left/right → stage length</p>
+        </div>
+      </div>
+
+    </div><!-- /left col -->
+
+    <!-- RIGHT: Soil + Irrigation system -->
+    <div class="setup-col">
+
+      <div class="grp grp-soil">
+        <div class="gtitle">Soil</div>
+        <div class="fg fg-2" style="margin-bottom:10px;">
+          <div>
+            <label>Texture</label>
+            <select id="soilType">
+              <option value="sand">Sand</option>
+              <option value="loamySand">Loamy Sand</option>
+              <option value="sandyLoam">Sandy Loam</option>
+              <option value="loam">Loam</option>
+              <option value="siltLoam" selected>Silt Loam</option>
+              <option value="clayLoam">Clay Loam</option>
+              <option value="sandyClay">Sandy Clay</option>
+              <option value="siltyClay">Silty Clay</option>
+              <option value="clay">Clay</option>
+            </select>
+          </div>
+          <div>
+            <label>Initial Water (%TAW)</label>
+            <input type="number" id="initWater" value="75" min="0" max="100">
+          </div>
+        </div>
+        <div class="fg fg-2">
+          <div>
+            <label style="margin-bottom:2px;">Root Depth Profile</label>
+            <div class="radio-row">
+              <label><input type="radio" name="rdMode" value="dynamic" checked> Dynamic</label>
+              <label><input type="radio" name="rdMode" value="constant"> Constant</label>
+            </div>
+          </div>
+          <div>
+            <label>Max. Root Depth (in)</label>
+            <input type="number" id="rootDepth" value="48" min="8" max="120">
+            <span id="rootDepthErr" style="display:none;font-size:12px;color:var(--red);">
+              Must be between 8 and 120 inches.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp grp-pvt">
+        <div class="gtitle">Irrigation System</div>
+        <div class="fg fg-2" style="margin-bottom:10px;">
+          <div>
+            <label>Field Size (ac)</label>
+            <input type="number" id="fieldArea" value="125" min="1">
+          </div>
+          <div>
+            <label>Pump Capacity (gpm)</label>
+            <input type="number" id="pumpGPM" value="800" min="1">
+          </div>
+        </div>
+        <div class="fg fg-2" style="margin-bottom:10px;">
+          <div>
+            <label>Efficiency (%)</label>
+            <input type="number" id="sprinkEff" value="85" min="50" max="100">
+          </div>
+          <div id="fixedDepthWrap">
+            <label>Application Depth</label>
+            <select id="appDepth" onchange="onAppDepth()">
+              <option value="0.5">0.5 in</option>
+              <option value="1.0" selected>1.0 in</option>
+              <option value="1.5">1.5 in</option>
+              <option value="custom">Custom…</option>
+            </select>
+          </div>
+          <div id="customDepthWrap" style="display:none;">
+            <label>Custom (in)</label>
+            <input type="number" id="appDepthCustom" value="1.0" step="0.1" min="0.1" max="5">
+          </div>
+        </div>
+        <!-- Live revolution time display -->
+        <p id="revTimeDisplay" class="rev-display" style="margin-bottom:8px;"></p>
+
+        <div style="margin-bottom:10px;">
+          <label style="margin-bottom:4px;">Irrigation Strategy</label>
+          <div class="radio-row">
+            <label><input type="radio" name="irrMode" value="fixed" checked> Fixed depth</label>
+            <label><input type="radio" name="irrMode" value="refill"> Refill to FC</label>
+            <label><input type="radio" name="irrMode" value="none"> No irrigation</label>
+          </div>
+        </div>
+        <div id="madWrap">
+          <label style="margin-bottom:4px;">Trigger — Management Allowed Depletion (MAD)</label>
+          <div class="seg">
+            <button type="button" id="mad30" onclick="setMAD(30)">30%</button>
+            <button type="button" id="mad40" onclick="setMAD(40)">40%</button>
+            <button type="button" id="mad50" class="on" onclick="setMAD(50)">50%</button>
+            <button type="button" id="mad60" onclick="setMAD(60)">60%</button>
+            <button type="button" id="mad70" onclick="setMAD(70)">70%</button>
+          </div>
+          <input type="hidden" id="mad" value="50">
+          <div class="fg fg-2" style="margin-top:10px;">
+            <div>
+              <label title="Days after planting during which irrigation is withheld.">No-irrig. period (days) ⓘ</label>
+              <input type="number" id="estabDays" value="14" min="0" max="60">
+            </div>
+            <div>
+              <label style="display:flex;align-items:center;gap:5px;white-space:nowrap;">
+                <input type="checkbox" id="allocEnabled" onchange="onAllocToggle()" style="width:14px;height:14px;accent-color:var(--g);margin:0;flex-shrink:0;">
+                Alloc. limit (in)
+              </label>
+              <input type="number" id="allocLimit" value="10" min="0.5" max="100" step="0.5" disabled
+                style="opacity:.45;transition:opacity .15s;">
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /right col -->
+  </div><!-- /setup-outer -->
+
+  <div style="margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <div class="action-row">
+      <button id="btnGenerate" class="btn-go" onclick="generateSchedule()">▶ Generate Schedule</button>
+      <span class="hint">Fetches observed weather + 7-day forecast.</span>
+    </div>
+    <button class="btn-sm no-print" onclick="openSpecsModal()"
+      style="margin-left:auto;font-size:12px;color:var(--mut);padding:5px 11px;"
+      title="View all model parameters">⚙ Specs</button>
+  </div>
+</div>
+
+
+<!-- ══════════  RESULTS  ══════════ -->
+<div id="results">
+
+  <!-- Title bar -->
+  <div class="results-hdr">
+    <span id="resultsTitle"></span>
+  </div>
+
+  <!-- Season metrics — expanded by default, collapsible -->
+  <details class="analytics" open>
+    <summary class="analytics-toggle no-print">Season Summary</summary>
+    <div class="card" style="margin-top:8px;">
+      <div class="sum-grid" id="summaryStats"></div>
+    </div>
+  </details>
+
+  <!-- Chart — always visible -->
+  <div class="card">
+    <div class="chart-hdr">
+      <span class="ctitle">Soil Water Balance</span>
+      <div class="chart-toggle no-print">
+        <button id="btnStorage"   class=""   onclick="toggleChartMode('storage')">Storage</button>
+        <button id="btnDepletion" class="on" onclick="toggleChartMode('depletion')">Depletion</button>
+      </div>
+    </div>
+    <div class="ct-top"><canvas id="chartTop"></canvas></div>
+    <div class="ct-bot"><canvas id="chartBot"></canvas></div>
+  </div>
+
+  <!-- Table — always visible -->
+  <div class="card" id="tableCard">
+    <div class="chart-hdr no-print">
+      <span class="ctitle">Daily Schedule</span>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn-sm" onclick="window.print()">🖨 Print</button>
+        <button class="btn-sm" onclick="downloadCSV()">⬇ CSV</button>
+      </div>
+    </div>
+    <p class="note no-print" style="margin-bottom:10px;">
+      💧 Click any observed rain cell to enter your own field measurement.
+    </p>
+    <div class="legend no-print">
+      <span><span style="display:inline-block;width:3px;height:14px;background:var(--obs);border-radius:1px;vertical-align:middle;margin-right:4px;"></span>Observed</span>
+      <span><span style="display:inline-block;width:3px;height:14px;background:var(--fut);border-radius:1px;vertical-align:middle;margin-right:4px;"></span>Forecast</span>
+    </div>
+
+    <!-- Show/hide earlier rows button — only visible when there are hidden rows -->
+    <div id="earlyRowsToggleWrap" class="no-print" style="display:none;margin-top:8px;">
+      <button id="earlyRowsToggleBtn" class="btn-sm" onclick="toggleEarlyRows()"
+        style="width:100%;text-align:center;color:var(--mut);font-size:13px;"></button>
+    </div>
+
+    <div class="tscroll">
+      <table id="schedTable">
+        <thead>
+          <tr>
+            <th class="tl mob-hide" style="width:28px">#</th>
+            <th class="tl" style="min-width:88px">Date</th>
+            <th style="min-width:52px">Rain (in)</th>
+            <th class="mob-hide" style="min-width:52px">ETo (in)</th>
+            <th class="mob-hide" style="min-width:38px">Kc</th>
+            <th style="min-width:52px">ETc (in)</th>
+            <th class="mob-hide" style="min-width:72px">Storage (in)</th>
+            <th style="min-width:52px">TAW (%)</th>
+            <th id="grossHeader" class="mob-hide" style="min-width:72px">Gross (in)</th>
+            <th style="min-width:90px">Status</th>
+          </tr>
+        </thead>
+        <!-- Early rows (before the 7-day window) — hidden by default -->
+        <tbody id="tbodyEarly" style="display:none;"></tbody>
+        <!-- Divider row between early and visible sections -->
+        <tbody id="tbodyDivider" style="display:none;">
+          <tr>
+            <td colspan="10" id="earlyDividerCell"
+              style="text-align:center;padding:4px 8px;font-size:11px;color:var(--mut);
+                     background:var(--sllt);border-top:2px dashed var(--bdr);
+                     border-bottom:2px dashed var(--bdr);">
+            </td>
+          </tr>
+        </tbody>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--bdr);">
+      <p class="note" style="margin:0;flex:1;">
+        Soil Water Processes Lab | Agronomy | Kansas State University
+        &nbsp;·&nbsp;
+        <a href="#" onclick="document.getElementById('aboutModal').style.display='flex';return false;"
+           style="color:var(--mut);text-decoration:underline;font-size:13px;">Attributions &amp; License</a>
+      </p>
+      <button id="resetRainBtn" class="btn-sm no-print" onclick="resetAllRain()" style="display:none;white-space:nowrap;">↺ Restore original rain</button>
+    </div>
+  </div>
+
+</div><!-- /results -->
+</div><!-- /wrap -->
+
+<script>
+// ═══════════════  LOCATION & FORECAST CONFIG  ═════════
+
+// Default: Manhattan, KS — updated when user picks a location on the map
+let userLat  = 39.1836;
+let userLng  = -96.5717;
+let userLocName = 'Manhattan, KS';
+
+// Forecast window (days). Only rainfall within PRECIP_FORECAST_DAYS is used,
+// and only if precipitation_probability_max >= PRECIP_PROB_THRESHOLD.
+const FORECAST_DAYS        = 7;    // 7-day forecast window
+const PRECIP_FORECAST_DAYS = 3;    // rainfall accepted only within this window
+const PRECIP_PROB_THRESHOLD= 50;   // % probability required to include forecast rain
+
+
+// FAO-56 Kc values. stages=[Lini,Ldev,Lmid,Llate] days. plantDate='MM-DD' for Kansas.
+// Winter wheat: Oct 15 planting → ~240 days to ~Jun 12 harvest.
+// Ldev is long (120 d) to accommodate winter dormancy; Kc rises linearly through it,
+// which is a simplification — actual Kc stalls near Kc_ini during dormancy.
+const CROPS = {
+  corn:        {name:"Corn",         Kc_ini:.30,Kc_mid:1.15,Kc_end:.50,stages:[25,35,50,30],root:48,plantDate:'05-01'},
+  soybean:     {name:"Soybean",      Kc_ini:.40,Kc_mid:1.15,Kc_end:.50,stages:[20,35,60,25],root:36,plantDate:'05-15'},
+  sorghum:     {name:"Grain Sorghum",Kc_ini:.30,Kc_mid:1.00,Kc_end:.55,stages:[20,35,40,30],root:48,plantDate:'05-20'},
+  // Winter wheat: Oct 1 planting → ~250 days to ~Jun 8 harvest.
+  // Lini=135 covers emergence + entire winter dormancy (Oct 1 → late Feb, Kc stays low ≈ 0.10).
+  // Ldev=45 covers rapid spring green-up (Mar → mid-Apr).
+  // Lmid=55 covers heading and grain fill (mid-Apr → Jun 1).
+  // Llate=15 covers rapid dry-down to harvest (Jun 1 → Jun 16).
+  winterWheat: {name:"Winter Wheat", Kc_ini:.10,Kc_mid:1.15,Kc_end:.25,stages:[135,45,55,15],root:48,plantDate:'10-10'},
+  sunflower:   {name:"Sunflower",    Kc_ini:.35,Kc_mid:1.10,Kc_end:.35,stages:[25,35,45,25],root:48,plantDate:'05-20'},
+};
+
+const SOILS = {
+  sand:      {FC:15.4,WP: 3.5,CN:72},  // PTF (no obs)
+  loamySand: {FC:18.6,WP: 6.3,CN:74},  // PTF (no obs)
+  sandyLoam: {FC:21.3,WP: 7.9,CN:78},  // observed n=15
+  loam:      {FC:27.4,WP:11.6,CN:82},  // PTF (n=3 too few)
+  siltLoam:  {FC:33.7,WP:15.2,CN:84},  // observed n=38
+  clayLoam:  {FC:34.3,WP:19.9,CN:86},  // observed n=18
+  sandyClay: {FC:31.6,WP:21.3,CN:86},  // PTF (no obs)
+  siltyClay: {FC:40.6,WP:25.0,CN:88},  // observed n=27
+  clay:      {FC:43.6,WP:30.3,CN:88},  // observed n=5
+};
+
+
+document.getElementById('rootDepth').addEventListener('input', () => {
+  const v   = parseFloat(document.getElementById('rootDepth').value);
+  const err = document.getElementById('rootDepthErr');
+  const invalid = isNaN(v) || v < 8 || v > 120;
+  err.style.display = invalid ? '' : 'none';
+  if (!invalid) debouncedRecompute();
+});
+
+// Clamp numeric inputs to their valid range on blur
+[
+  {id:'initWater',     min:0,   max:100,  def:75  },
+  {id:'fieldArea',     min:1,   max:99999,def:125 },
+  {id:'pumpGPM',       min:1,   max:99999,def:800 },
+  {id:'sprinkEff',     min:50,  max:100,  def:85  },
+  {id:'appDepthCustom',min:0.1, max:5,    def:1.0 },
+  {id:'estabDays',     min:0,   max:60,   def:14  },
+  {id:'allocLimit',    min:0.5, max:100,  def:10  },
+].forEach(({id,min,max,def})=>{
+  document.getElementById(id).addEventListener('blur',()=>{
+    const el=document.getElementById(id);
+    const v=parseFloat(el.value);
+    if(isNaN(v)||v<min) el.value=min;
+    else if(v>max)      el.value=max;
+    debouncedRecompute();
+  });
+});
+
+
+// ═══════════════  Kc EDITOR  ══════════════════════
+
+let kc = { ki:.30, km:1.15, ke:.60, li:30, ld:40, lm:50, ll:30 };
+
+const PL=38, PR=14, PT=26, PB=34;
+let _PW=450, _PH=120;
+const KC_MAX=1.25, KC_MIN=0.05, L_MIN=5;
+
+const kcTotal = () => kc.li + kc.ld + kc.lm + kc.ll;
+const px  = d => PL + (d / kcTotal()) * _PW;
+const py  = k => PT + _PH - (k / KC_MAX) * _PH;
+const xToDay = x => ((x - PL) / _PW) * kcTotal();
+const yToKc  = y => Math.max(KC_MIN, Math.min(KC_MAX, ((PT+_PH-y)/_PH)*KC_MAX));
+function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
+
+function hPos(i){
+  const {ki,km,ke,li,ld,lm,ll}=kc, tot=li+ld+lm+ll;
+  return [[0,ki],[li,ki],[li+ld,km],[li+ld+lm,km],[tot,ke]][i];
+}
+const H_XLOCK=[true,false,false,false,false];  // H4 unlocked: drag right/left = season length
+const H_YLOCK=[false,true,false,true,false];
+
+function drawKc(){
+  const svg=document.getElementById('kcSvg');
+  const rect=svg.getBoundingClientRect();
+  const W=Math.max(200,Math.round(rect.width));
+  const H=Math.max(120,Math.round(rect.height));
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  _PW=W-PL-PR; _PH=H-PT-PB;
+
+  const {ki,km,ke,li,ld,lm,ll}=kc, tot=kcTotal();
+
+  const stageDefs=[
+    {from:0,       to:li,       fill:'rgba(219,234,254,0.45)',label:'Initial'},
+    {from:li,      to:li+ld,    fill:'rgba(220,252,231,0.55)',label:'Dev.'},
+    {from:li+ld,   to:li+ld+lm, fill:'rgba(187,247,208,0.55)',label:'Mid'},
+    {from:li+ld+lm,to:tot,      fill:'rgba(254,243,199,0.55)',label:'Late'},
+  ];
+  const stageBg=stageDefs.map(s=>{
+    const x1=px(s.from),w=px(s.to)-x1,mx=(px(s.from)+px(s.to))/2;
+    return `<rect x="${x1.toFixed(1)}" y="${PT}" width="${w.toFixed(1)}" height="${_PH}" fill="${s.fill}"/>
+      <text x="${mx.toFixed(1)}" y="${PT-7}" font-size="13" fill="#94a3b8" text-anchor="middle" font-family="system-ui,sans-serif">${s.label}</text>`;
+  }).join('');
+
+  const divLines=[li,li+ld,li+ld+lm].map(d=>{
+    const dx=px(d).toFixed(1);
+    return `<line x1="${dx}" y1="${PT}" x2="${dx}" y2="${PT+_PH}" stroke="#e2e8f0" stroke-width="1"/>`;
+  }).join('');
+
+  const gridLines=[1.0,0.5].map(k=>{
+    const gy=py(k).toFixed(1);
+    return `<line x1="${PL}" y1="${gy}" x2="${W-PR}" y2="${gy}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="${PL-4}" y="${+gy+4}" font-size="13" fill="#94a3b8" text-anchor="end" font-family="system-ui,sans-serif">${k.toFixed(1)}</text>`;
+  }).join('');
+
+  const axes=`<line x1="${PL}" y1="${PT}" x2="${PL}" y2="${PT+_PH}" stroke="#cbd5e1" stroke-width="1.5"/>
+    <line x1="${PL}" y1="${PT+_PH}" x2="${W-PR}" y2="${PT+_PH}" stroke="#cbd5e1" stroke-width="1.5"/>`;
+
+  const pts=[[0,ki],[li,ki],[li+ld,km],[li+ld+lm,km],[tot,ke]];
+  const pStr=pts.map(([d,k])=>`${px(d).toFixed(1)},${py(k).toFixed(1)}`).join(' ');
+  const fillPts=`${PL},${PT+_PH} ${pStr} ${px(tot).toFixed(1)},${PT+_PH}`;
+  const kcClr      = cssVar('--kc-curve');
+  const kcLabelClr = cssVar('--kc-label');
+  const curve=`<polygon points="${fillPts}" fill="rgba(22,163,74,0.08)"/>
+    <polyline points="${pStr}" fill="none" stroke="${kcClr}" stroke-width="2.5" stroke-linejoin="round"/>`;
+
+  const handles=[0,1,2,3,4].map(i=>{
+    const [d,k]=hPos(i);
+    const hx=px(d).toFixed(1),hy=py(k).toFixed(1);
+    const cur=H_XLOCK[i]?'ns-resize':H_YLOCK[i]?'ew-resize':'move';
+    let kcLabel='',dayLabel='';
+    if(i===0) kcLabel=`<text x="${hx}" y="${+hy-12}" font-size="12" fill="${kcLabelClr}" font-weight="700" text-anchor="middle" font-family="system-ui,sans-serif">${ki.toFixed(2)}</text>`;
+    if(i===2) kcLabel=`<text x="${hx}" y="${+hy-12}" font-size="12" fill="${kcLabelClr}" font-weight="700" text-anchor="middle" font-family="system-ui,sans-serif">${km.toFixed(2)}</text>`;
+    if(i===4) kcLabel=`<text x="${hx}" y="${+hy-12}" font-size="12" fill="${kcLabelClr}" font-weight="700" text-anchor="middle" font-family="system-ui,sans-serif">${ke.toFixed(2)}</text>`;
+    if(i===1||i===2||i===3){
+      const dayVal=[li,li+ld,li+ld+lm][i-1];
+      dayLabel=`<text x="${hx}" y="${PT+_PH+16}" font-size="12" fill="#94a3b8" text-anchor="middle" font-family="system-ui,sans-serif">d${dayVal}</text>`;
+    }
+    return `${kcLabel}${dayLabel}
+      <circle cx="${hx}" cy="${hy}" r="8" fill="white" stroke="${kcClr}" stroke-width="2.5"
+        class="kch" data-i="${i}" style="cursor:${cur}"/>`;
+  }).join('');
+
+  svg.innerHTML=stageBg+divLines+gridLines+axes+curve+handles;
+  svg.querySelectorAll('.kch').forEach(el=>el.addEventListener('pointerdown',kcPointerDown));
+
+  // Build label: "150 days  ·  Sep 27, 2026"
+  const plantStr = document.getElementById('plantingDate').value;
+  let harvestLabel = `${tot} days`;
+  if(plantStr){
+    const harv = new Date(plantStr+'T00:00:00');
+    harv.setDate(harv.getDate()+tot);
+    harvestLabel += `  ·  ${harv.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+  }
+  document.getElementById('kcTotalLabel').textContent = harvestLabel;
+}
+
+let kcDragIdx=null;
+function kcPointerDown(e){
+  e.preventDefault();
+  kcDragIdx=parseInt(e.currentTarget.dataset.i);
+  document.getElementById('kcSvg').setPointerCapture(e.pointerId);
+}
+function svgCoords(e){
+  const r=document.getElementById('kcSvg').getBoundingClientRect();
+  return{x:e.clientX-r.left, y:e.clientY-r.top};
+}
+function kcPointerMove(e){
+  if(kcDragIdx===null) return;
+  e.preventDefault();
+  const{x,y}=svgCoords(e);
+  const{li,ld,lm,ll}=kc;
+  switch(kcDragIdx){
+    case 0: kc.ki=+yToKc(y).toFixed(2); break;
+    case 1:{ const h2=li+ld; const nl=clamp(Math.round(xToDay(x)),L_MIN,h2-L_MIN); kc.li=nl; kc.ld=h2-nl; break; }
+    case 2:{ const h1=li,h3=li+ld+lm; const nh2=clamp(Math.round(xToDay(x)),h1+L_MIN,h3-L_MIN); kc.ld=nh2-li; kc.lm=h3-nh2; kc.km=+yToKc(y).toFixed(2); break; }
+    case 3:{ const h2=li+ld,h4=li+ld+lm+ll; const nh3=clamp(Math.round(xToDay(x)),h2+L_MIN,h4-L_MIN); kc.lm=nh3-li-ld; kc.ll=h4-nh3; break; }
+    case 4: {
+      // X: resize late season (extends/shrinks total season length)
+      const h3day = kc.li + kc.ld + kc.lm;
+      const newTot = clamp(Math.round(xToDay(x)), h3day + L_MIN, 365);
+      kc.ll = newTot - h3day;
+      // Y: Kc end value
+      kc.ke = +yToKc(y).toFixed(2);
+      break;
+    }
+  }
+  drawKc();
+  debouncedRecompute();
+}
+
+
+// ═══════════════  RAIN OVERRIDES  ═════════════════
+// Keyed by date string "YYYY-MM-DD", value in inches.
+// Persisted via window.storage across sessions.
+
+let rainOverrides = {};
+
+async function loadRainOverrides(){
+  try {
+    const r = await window.storage.get('rain-overrides');
+    rainOverrides = JSON.parse(r.value);
+  } catch(e) {
+    rainOverrides = {};
+  }
+}
+
+async function saveRainOverrides(){
+  try {
+    await window.storage.set('rain-overrides', JSON.stringify(rainOverrides));
+  } catch(e) {
+    console.warn('Could not save rain overrides:', e);
+  }
+}
+
+// Click handler on observed rain cells
+function editRain(cell){
+  if(cell.querySelector('input')) return; // already editing
+  const ds   = cell.dataset.ds;
+  const meso = parseFloat(cell.dataset.meso) || 0;
+  const cur  = rainOverrides[ds] !== undefined ? rainOverrides[ds] : meso;
+
+  const inp = document.createElement('input');
+  inp.type='number'; inp.className='rain-input';
+  inp.value=cur.toFixed(2); inp.min=0; inp.step=0.01;
+  cell.textContent='';
+  cell.appendChild(inp);
+  inp.focus(); inp.select();
+
+  function commit(){
+    const val=parseFloat(inp.value);
+    if(!isNaN(val) && val>=0){
+      // If within 0.001 of the original value, remove override (restore original)
+      if(Math.abs(val-meso)<0.001) delete rainOverrides[ds];
+      else rainOverrides[ds]=+val.toFixed(3);
+    } else {
+      delete rainOverrides[ds]; // empty → restore original
+    }
+    saveRainOverrides();
+    recompute();
+  }
+
+  inp.addEventListener('blur',   commit);
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ e.preventDefault(); inp.blur(); }
+    if(e.key==='Escape'){ e.preventDefault(); recompute(); } // cancel
+  });
+}
+
+
+// ═══════════════  INIT  ════════════════════════════
+
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadRainOverrides();
+
+  onCropChange();
+  updateRevDisplay();
+
+  // Planting date change: invalidate weather cache
+  document.getElementById('plantingDate').addEventListener('input',()=>{
+    wxCache.cacheKey = null;
+    drawKc();
+    debouncedRecompute();
+  });
+
+  // Numeric inputs
+  ['rootDepth','initWater','fieldArea','pumpGPM','sprinkEff','appDepthCustom','estabDays','allocLimit']
+    .forEach(id=>document.getElementById(id).addEventListener('input',()=>{updateRevDisplay();debouncedRecompute();}));
+
+  // Selects: immediate recompute
+  ['soilType','appDepth'].forEach(id=>
+    document.getElementById(id).addEventListener('change',()=>recompute()));
+
+  // Radios: immediate recompute
+  document.querySelectorAll('input[name="rdMode"]')
+    .forEach(r=>r.addEventListener('change',()=>recompute()));
+  document.querySelectorAll('input[name="irrMode"]')
+    .forEach(r=>r.addEventListener('change',()=>{onIrrMode();recompute();}));
+
+  // Kc SVG
+  const kcSvg=document.getElementById('kcSvg');
+  kcSvg.addEventListener('pointermove',kcPointerMove);
+  kcSvg.addEventListener('pointerup',   ()=>{kcDragIdx=null;});
+  kcSvg.addEventListener('pointercancel',()=>{kcDragIdx=null;});
+  new ResizeObserver(()=>drawKc()).observe(kcSvg);
+
+  // Rain cell editing — event delegation on both tbodies
+  document.getElementById('tbody').addEventListener('click',e=>{
+    const cell=e.target.closest('td.rain-cell');
+    if(cell) editRain(cell);
+  });
+  document.getElementById('tbodyEarly').addEventListener('click',e=>{
+    const cell=e.target.closest('td.rain-cell');
+    if(cell) editRain(cell);
+  });
+
+  // Enter key → Generate Schedule (unless focus is inside a rain edit input)
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Enter' && !e.target.classList.contains('rain-input')){
+      e.preventDefault();
+      generateSchedule();
+    }
+  });
+});
+
+function onCropChange(){
+  const cropKey = document.getElementById('crop').value;
+  const c = CROPS[cropKey];
+  document.getElementById('rootDepth').value = c.root;
+  kc = {ki:c.Kc_ini,km:c.Kc_mid,ke:c.Kc_end,
+        li:c.stages[0],ld:c.stages[1],lm:c.stages[2],ll:c.stages[3]};
+  const yr = new Date().getFullYear();
+  document.getElementById('plantingDate').value = `${yr}-${c.plantDate}`;
+  wxCache.cacheKey = null;
+  drawKc();
+  debouncedRecompute();
+}
+function onIrrMode(){
+  const mode=document.querySelector('input[name="irrMode"]:checked').value;
+  const showDepth = mode==='fixed'||mode==='refill';
+  document.getElementById('fixedDepthWrap').style.display=showDepth?'':'none';
+  document.getElementById('customDepthWrap').style.display='none';
+  document.getElementById('madWrap').style.display=(mode==='fixed'||mode==='refill')?'':'none';
+  updateRevDisplay();
+  recompute();
+}
+function onAppDepth(){
+  document.getElementById('customDepthWrap').style.display=
+    document.getElementById('appDepth').value==='custom'?'':'none';
+  updateRevDisplay();
+}
+function updateRevDisplay(){
+  const area  = parseFloat(document.getElementById('fieldArea').value)||125;
+  const gpm   = parseFloat(document.getElementById('pumpGPM').value)||800;
+  const eff   = (parseFloat(document.getElementById('sprinkEff').value)||85)/100;
+  const adRaw = document.getElementById('appDepth').value;
+  const appD  = adRaw==='custom'?(parseFloat(document.getElementById('appDepthCustom').value)||1):parseFloat(adRaw);
+  const revD  = (area*appD*27154)/(gpm*eff*60*24);
+  const el    = document.getElementById('revTimeDisplay');
+  if(el) el.innerHTML = `Revolution time: <strong>${revD.toFixed(1)} days</strong> at current settings`;
+}
+function setMAD(pct){
+  document.getElementById('mad').value=pct;
+  [30,40,50,60,70].forEach(p=>document.getElementById('mad'+p).classList.toggle('on',p===pct));
+  recompute();
+}
+
+function onAllocToggle(){
+  const en  = document.getElementById('allocEnabled').checked;
+  const inp = document.getElementById('allocLimit');
+  inp.disabled = !en;
+  inp.style.opacity = en ? '1' : '.45';
+  recompute();
+}
+
+function resetAllRain(){
+  rainOverrides={};
+  saveRainOverrides();
+  recompute();
+}
+
+
+// ═══════════════  PHYSICS  ════════════════════════
+
+function getKc(i){
+  const {ki,km,ke,li,ld,lm,ll}=kc, d=Math.min(i,li+ld+lm+ll-1);
+  if(d<li)          return ki;
+  if(d<li+ld)       return ki+((d-li)/ld)*(km-ki);
+  if(d<li+ld+lm)    return km;
+  return km+((d-li-ld-lm)/ll)*(ke-km);
+}
+
+function getZ(i,crop,Zm,dynamic){
+  if(!dynamic) return Zm;
+  const [Li,Ld]=crop.stages, Zi=8;
+  if(i<Li) return Zi;
+  if(i<Li+Ld) return Zi+((i-Li)/Ld)*(Zm-Zi);
+  return Zm;
+}
+
+function runoff(P,CN){ const S=1000/CN-10,Ia=.2*S; return P<=Ia?0:(P-Ia)*(P-Ia)/(P-Ia+S); }
+function pivDays(A,d,Q,E){ return (A*d*27154)/(Q*E*60*24); }
+
+// ═══════════════  OPEN-METEO WEATHER  ════════════════
+
+let wxCache = {cacheKey: null, wx: {}};
+
+function omCacheKey(lat, lng) {
+  return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+}
+
+async function fetchWeatherOpenMeteo(lat, lng, startDate, endDate) {
+  // startDate, endDate: 'YYYY-MM-DD' strings
+  // Returns wx dict keyed by date string
+  const wx = {};
+  const tz = 'America%2FChicago';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().split('T')[0];
+
+  // ── Historical (archive API) ──────────────────────
+  if (startDate <= todayStr) {
+    const histEnd = endDate < todayStr ? endDate : todayStr;
+    const histVars = 'temperature_2m_max,temperature_2m_min,precipitation_sum,et0_fao_evapotranspiration';
+    const histUrl  = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}`
+      + `&start_date=${startDate}&end_date=${histEnd}&daily=${histVars}&timezone=${tz}`;
+    try {
+      const resp = await fetch(histUrl);
+      if (resp.ok) {
+        const data = await resp.json();
+        const d = data.daily;
+        d.time.forEach((ds, i) => {
+          const tmax = d.temperature_2m_max[i];
+          const tmin = d.temperature_2m_min[i];
+          if (tmax == null || tmax < -40 || tmax > 55) return;
+          const pr  = d.precipitation_sum[i] ?? 0;
+          const et0 = d.et0_fao_evapotranspiration[i];
+          wx[ds] = {
+            tmax, tmin,
+            p:   Math.max(0, pr) / 25.4,
+            eto: et0 != null ? Math.max(0, et0) / 25.4 : null,
+            precip_prob: null   // historical — no probability
+          };
+        });
+        console.log(`Loaded ${Object.keys(wx).length} historical days from Open-Meteo.`);
+      }
+    } catch(e) { console.warn('Open-Meteo archive error:', e.message); }
+  }
+
+  // ── Forecast API ──────────────────────────────────
+  const fcastVars = 'temperature_2m_max,temperature_2m_min,precipitation_sum,'
+    + 'precipitation_probability_max,et0_fao_evapotranspiration';
+  const fcastUrl  = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}`
+    + `&daily=${fcastVars}&forecast_days=${FORECAST_DAYS}&timezone=${tz}`;
+  try {
+    const resp = await fetch(fcastUrl);
+    if (resp.ok) {
+      const data = await resp.json();
+      const d = data.daily;
+      d.time.forEach((ds, i) => {
+        if (ds <= todayStr) return;  // don't overwrite historical with forecast
+        const tmax = d.temperature_2m_max[i];
+        const tmin = d.temperature_2m_min[i];
+        if (tmax == null) return;
+        const pr   = d.precipitation_sum[i] ?? 0;
+        const et0  = d.et0_fao_evapotranspiration[i];
+        const prob = d.precipitation_probability_max[i] ?? 0;
+        wx[ds] = {
+          tmax, tmin,
+          p:           Math.max(0, pr) / 25.4,
+          eto:         et0 != null ? Math.max(0, et0) / 25.4 : null,
+          precip_prob: prob
+        };
+      });
+    }
+  } catch(e) { console.warn('Open-Meteo forecast error:', e.message); }
+
+  return wx;
+}
+
+
+// ═══════════════  PIVOT SPINNER  ══════════════════
+
+function createPivotSpinner(size, ringColor){
+  const dpr = window.devicePixelRatio || 1;
+  const c = document.createElement('canvas');
+  c.width  = size * dpr;
+  c.height = size * dpr;
+  c.style.width  = size + 'px';
+  c.style.height = size + 'px';
+  c.style.flexShrink = '0';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const cx = size/2, cy = size/2;
+  const R  = size/2 - 1.5;
+  const ri = R * 0.58;
+  const tk = R * 0.20;
+  const dur = 2000;
+  let start = null, running = true, raf;
+
+  function frame(ts){
+    if(!running) return;
+    if(!start) start = ts;
+    const angle = ((ts - start) % dur) / dur * Math.PI * 2;
+
+    ctx.clearRect(0, 0, size, size);
+
+    // Wedge
+    if(angle > 0.01){
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, R, -Math.PI/2, -Math.PI/2 + angle, false);
+      ctx.closePath();
+      ctx.fillStyle = '#dcfce7';
+      ctx.fill();
+    }
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI*2);
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Inner ring
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ri, 0, Math.PI*2);
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // 4 ticks N E S W
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 1.2;
+    [[cx,cy-R,cx,cy-R+tk],[cx+R,cy,cx+R-tk,cy],
+     [cx,cy+R,cx,cy+R-tk],[cx-R,cy,cx-R+tk,cy]].forEach(([x1,y1,x2,y2])=>{
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    });
+
+    // Arm
+    const ax = cx + R * Math.sin(angle);
+    const ay = cy - R * Math.cos(angle);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy); ctx.lineTo(ax, ay);
+    ctx.strokeStyle = '#16a34a';
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * 0.18, 0, Math.PI*2);
+    ctx.fillStyle = '#16a34a';
+    ctx.fill();
+
+    // Tip open circle
+    ctx.beginPath();
+    ctx.arc(ax, ay, R * 0.10, 0, Math.PI*2);
+    ctx.strokeStyle = '#16a34a';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    raf = requestAnimationFrame(frame);
+  }
+
+  raf = requestAnimationFrame(frame);
+  c._stop = () => { running = false; cancelAnimationFrame(raf); };
+  return c;
+}
+
+
+// ═══════════════  SIMULATION  ═════════════════════
+
+let cTop=null, cBot=null, tableData=[];
+let hasResults=false;
+
+function debounce(fn,ms){ let t; return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms);}; }
+const debouncedRecompute=debounce(()=>recompute(),400);
+
+let _toastTimer = null;
+function showToast(msg, ms=3000){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(()=>el.classList.remove('show'), ms);
+}
+
+async function generateSchedule(){
+  const plantStr = document.getElementById('plantingDate').value;
+  if(!plantStr){alert('Please enter a planting date.'); return;}
+
+  // Planting date must not be in the future — there would be no observed
+  // weather data to work with and the simulation produces nothing meaningful.
+  const today0 = new Date(); today0.setHours(0,0,0,0);
+  const t0check = new Date(plantStr+'T00:00:00');
+  if(t0check > today0){
+    showToast('Planting date is in the future — enter a date that has already passed');
+    return;
+  }
+
+  // If weather is already cached for this location and results are shown,
+  // skip the network request and just recompute (settings may have changed).
+  const key = omCacheKey(userLat, userLng);
+  if(hasResults && key === wxCache.cacheKey){
+    runSim();
+    showToast(`✓ Data already loaded for ${userLocName} — schedule refreshed`);
+    return;
+  }
+
+  const btn = document.getElementById('btnGenerate');
+  btn.disabled = true;
+  btn.classList.add('loading');
+
+  // Build animated pivot spinner
+  const spinner = createPivotSpinner(20, '#16a34a');
+  btn.innerHTML = '';
+  btn.style.display = 'inline-flex';
+  btn.style.alignItems = 'center';
+  btn.style.gap = '8px';
+  btn.appendChild(spinner);
+  btn.appendChild(Object.assign(document.createElement('span'), {textContent: 'Requesting data…'}));
+
+  try {
+    if(key !== wxCache.cacheKey){
+      const t0 = new Date(plantStr+'T00:00:00');
+      const today = new Date(); today.setHours(0,0,0,0);
+
+      const fetchEnd = new Date(today);
+      fetchEnd.setDate(fetchEnd.getDate()+FORECAST_DAYS);
+      const fetchEndStr = fetchEnd.toISOString().split('T')[0];
+      const startStr    = t0.toISOString().split('T')[0];
+
+      wxCache.wx = await fetchWeatherOpenMeteo(userLat, userLng, startStr, fetchEndStr);
+      wxCache.cacheKey = key;
+    }
+
+    runSim();
+    if(!hasResults){
+      document.getElementById('results').scrollIntoView({behavior:'smooth'});
+      hasResults=true;
+    }
+  } finally {
+    spinner._stop();
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.style.display = '';
+    btn.style.alignItems = '';
+    btn.style.gap = '';
+    btn.innerHTML = '▶ Generate Schedule';
+  }
+}
+
+function recompute(){
+  if(!hasResults) return;
+  runSim();
+}
+
+function runSim(){
+  const cropKey  =document.getElementById('crop').value;
+  const soilKey  =document.getElementById('soilType').value;
+  const plantStr =document.getElementById('plantingDate').value;
+  if(!plantStr) return;
+
+  const crop=CROPS[cropKey], soil=SOILS[soilKey];
+  const wx  = wxCache.wx;
+  const Zm  =parseFloat(document.getElementById('rootDepth').value)||48;
+  const dynamic =document.querySelector('input[name="rdMode"]:checked').value==='dynamic';
+  const initRaw = parseFloat(document.getElementById('initWater').value);
+  const initPct = (isNaN(initRaw) ? 75 : initRaw) / 100;
+  const area    =parseFloat(document.getElementById('fieldArea').value)||125;
+  const gpm     =parseFloat(document.getElementById('pumpGPM').value)||800;
+  const eff     =(parseFloat(document.getElementById('sprinkEff').value)||85)/100;
+  const adRaw   =document.getElementById('appDepth').value;
+  const fixedD  =adRaw==='custom'?(parseFloat(document.getElementById('appDepthCustom').value)||1):parseFloat(adRaw);
+  const irrMode =document.querySelector('input[name="irrMode"]:checked').value;
+  const mad     =parseFloat(document.getElementById('mad').value)/100;
+  const estabDays = parseInt(document.getElementById('estabDays').value)||0;
+  const allocEnabled = document.getElementById('allocEnabled').checked && irrMode!=='none';
+  const allocLimit   = allocEnabled ? (parseFloat(document.getElementById('allocLimit').value)||10) : Infinity;
+
+  const today=new Date(); today.setHours(0,0,0,0);
+  const t0=new Date(plantStr+'T00:00:00');
+
+  // Simulate only to today + FORECAST_DAYS or end of season, whichever is shorter
+  const simEnd = new Date(today); simEnd.setDate(simEnd.getDate()+FORECAST_DAYS);
+  const seasonEnd = new Date(t0); seasonEnd.setDate(seasonEnd.getDate()+kcTotal()-1);
+  const lastDay = simEnd < seasonEnd ? simEnd : seasonEnd;
+  const nDays = Math.max(1, Math.floor((lastDay - t0)/86400000) + 1);
+
+  tableData=[];
+  const Z0=getZ(0,crop,Zm,dynamic);
+  let S=(soil.WP*Z0/100)+initPct*(soil.FC*Z0/100-soil.WP*Z0/100);
+  let busy=false,busyEnd=-1,totalNet=0,allocUsed=0;
+
+  for(let i=0;i<nDays;i++){
+    const date=new Date(t0); date.setDate(date.getDate()+i);
+    const ds=date.toISOString().split('T')[0], fut=date>today;
+
+    const Zprev=i>0?getZ(i-1,crop,Zm,dynamic):Z0, Zcur=getZ(i,crop,Zm,dynamic);
+    if(Zcur>Zprev){
+      // New root volume added at current soil water fraction, not at FC.
+      // Adding at FC artificially resets the MAD trigger each day during rapid root growth.
+      const WP_prev  = soil.WP*Zprev/100;
+      const FC_prev  = soil.FC*Zprev/100;
+      const PAW_prev = FC_prev - WP_prev;
+      const curFAW   = PAW_prev>0 ? Math.max(0,Math.min(1,(S-WP_prev)/PAW_prev)) : 0.75;
+      S += (Zcur-Zprev) * (soil.WP/100 + curFAW*(soil.FC-soil.WP)/100);
+    }
+
+    const FC_in=soil.FC*Zcur/100, WP_in=soil.WP*Zcur/100;
+    const PAW=FC_in-WP_in, Thr=WP_in+(1-mad)*PAW;
+
+    const w=wx[ds];
+    let ETo,precip,mesoP,src;
+
+    if(!fut && w){
+      ETo   = w.eto ?? 0.15;  // Open-Meteo PM ETo; 0.15 in/day safety fallback
+      mesoP = w.p;
+      const override = rainOverrides[ds];
+      if(override !== undefined){ precip=override; src='field'; }
+      else { precip=mesoP; src='obs'; }
+
+    } else if(fut && w){
+      ETo   = w.eto ?? 0.15;
+      mesoP = w.p;
+      const daysAhead = Math.floor((date - today) / 86400000);
+      const useRain   = daysAhead <= PRECIP_FORECAST_DAYS &&
+                        (w.precip_prob ?? 0) >= PRECIP_PROB_THRESHOLD;
+      precip = useRain ? mesoP : 0;
+      src    = 'est';
+
+    } else {
+      // No wx data — simulation truncated so this path is rarely reached
+      ETo = 0.15; mesoP = 0; precip = 0; src = 'est';
+    }
+
+    const Kc=getKc(i);
+    const Ks=S<Thr?Math.max(0,(S-WP_in)/(Thr-WP_in+1e-9)):1;
+    const ETc=ETo*Kc*Ks;
+    const R=runoff(precip,soil.CN);
+
+    if(busy&&i>=busyEnd) busy=false;
+
+    const FAWpre=Math.max(0,Math.min(1,(S-WP_in)/(PAW+1e-9)));
+    let irr=0,pivT=0,rowSt='',rCls='',tCls='';
+
+    if(irrMode==='fixed'||irrMode==='refill'){
+      const allocLeft = allocLimit - allocUsed;
+      const allocOut  = allocEnabled && allocLeft <= 0.001;
+      if(!busy && i>=estabDays && FAWpre<(1-mad)){
+        if(allocOut){
+          // Allocation exhausted — can't irrigate even though soil is low
+          rowSt='⛔ Alloc. out';rCls='r-str';tCls='tag-aloc';
+        } else {
+          irr=irrMode==='refill'?Math.max(0,FC_in-S):fixedD;
+          // Clamp to remaining allocation
+          if(allocEnabled) irr=Math.min(irr, allocLeft);
+          if(irr>0){
+            pivT=pivDays(area,irr,gpm,eff);
+            busy=true;busyEnd=i+Math.ceil(pivT);
+            totalNet+=irr; allocUsed+=irr;
+          }
+          rowSt='▶ Irrigate';rCls='r-irr';tCls='tag-irr';
+        }
+      } else if(busy){
+        // Pivot is running — but check if soil also dropped below threshold
+        if(FAWpre<(1-mad)){
+          rowSt=`⚠ Stress`;rCls='r-str';tCls='tag-str';
+        } else {
+          rowSt=`↻ ${busyEnd-i}d left`;rCls='r-run';tCls='tag-run';
+        }
+      } else if(FAWpre<(1-mad)){
+        rowSt='⚠ Stress';rCls='r-str';tCls='tag-str';
+      } else {
+        rowSt='✓ OK';rCls='';tCls='tag-ok';
+      }
+    } else {
+      if(FAWpre<(1-mad)){rowSt='⚠ Stress';rCls='r-str';tCls='tag-str';}
+      else              {rowSt='✓ OK';rCls='';tCls='tag-ok';}
+    }
+
+    S=S+(precip-R)+irr-ETc;
+    S=Math.min(FC_in,Math.max(0,S));
+    const FAW=Math.max(0,Math.min(1,(S-WP_in)/(PAW+1e-9)));
+
+    // If the day appeared OK at dawn but ETc drained soil below threshold by end of day,
+    // update status so bar and label agree — farmer can see why the pivot fires next morning
+    if(rowSt==='✓ OK' && FAW<(1-mad)){
+      rowSt='EOD below MAD'; tCls='tag-lim';
+    }
+
+    tableData.push({i,ds,fut,src,precip,mesoP,ETo,Kc,Ks,ETc,R,irr,pivT,
+      Z:Zcur,FC_in,WP_in,PAW,Thr_in:Thr,S,FAW,rowSt,rCls,tCls,eff});
+  }
+
+  renderSummary(area,eff,totalNet,irrMode,allocEnabled,allocUsed,allocLimit);
+  renderTable(irrMode,mad);
+  renderCharts(mad);
+
+  document.getElementById('results').style.display='block';
+  const modeLabel = irrMode==='none'   ? 'No irrigation'
+    : irrMode==='refill' ? 'Refill to FC'
+    : `MAD ${Math.round(mad*100)}%`;
+  document.getElementById('resultsTitle').textContent=
+    `${crop.name} · ${userLocName} · ${t0.getFullYear()} · ${modeLabel}`;
+}
+
+
+// ═══════════════  RENDER  ═════════════════════════
+function renderSummary(area,eff,totalNet,irrMode,allocEnabled,allocUsed,allocLimit){
+  const totP    = tableData.reduce((a,r)=>a+r.precip,0);
+  const totET   = tableData.reduce((a,r)=>a+r.ETc,0);
+  const irrEv   = tableData.filter(r=>r.irr>0).length;
+  const grossAF = (totalNet*area/12)/eff;
+  const editCount = tableData.filter(r=>r.src==='field').length;
+  // Stress days: observed rows only (not forecast), where soil was below MAD at start of day
+  const stressDays = tableData.filter(r=>!r.fut && (r.tCls==='tag-str' || r.tCls==='tag-aloc')).length;
+
+  const items = [
+    {v:totP.toFixed(1)+' in', l:'Rainfall'},
+    {v:totET.toFixed(1)+' in', l:'Crop Water Use'},
+  ];
+  if(stressDays > 0){
+    items.push({v:stressDays, l:'Stress Days', cls:'bad'});
+  }
+  if(irrMode!=='none'){
+    items.push({v:totalNet.toFixed(1)+' in', l:'Net Irrigation'});
+    items.push({v:Math.round(grossAF)+' ac-ft', l:'Gross Pumped'});
+    items.push({v:irrEv,                        l:'Pivot Starts'});
+    if(allocEnabled && isFinite(allocLimit)){
+      const remain = Math.max(0, allocLimit - allocUsed);
+      const pctUsed = Math.min(100, (allocUsed / allocLimit) * 100);
+      const cls = pctUsed >= 100 ? 'bad' : pctUsed >= 80 ? 'warn' : 'ok';
+      items.push({v:`${remain.toFixed(1)} in`, l:'Alloc. Left', cls});
+    }
+  }
+  if(editCount>0){
+    items.push({v:editCount, l:'Rain Edits', cls:'ok'});
+  }
+
+  document.getElementById('summaryStats').innerHTML=items.map(it=>
+    `<div class="sitem"><div class="sval ${it.cls||''}">${it.v}</div><div class="slbl">${it.l}</div></div>`
+  ).join('');
+
+  // Update the allocation bar widget in the setup panel
+  // (no inline bar widget any more — allocation status shown in summary tiles only)
+
+  const rbtn=document.getElementById('resetRainBtn');
+  if(rbtn) rbtn.style.display=editCount>0?'':'none';
+}
+
+function renderTable(irrMode,mad){
+  document.getElementById('schedTable').className='';
+  const gh=document.getElementById('grossHeader');
+  if(irrMode==='none')        gh.textContent='';
+  else if(irrMode==='refill') gh.textContent='Applied (in)';
+  else                        gh.textContent='Gross (in)';
+
+  const madFAW=1-mad;
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Determine the split: visible window = today-6 through today+7 (15 rows).
+  // Everything before today-6 goes into the collapsible early section.
+  const todayIdx  = tableData.findIndex(r=>r.ds===todayStr);
+  // If today isn't in the dataset (season hasn't started yet, or all future),
+  // fall back to showing everything in the main tbody.
+  const windowStart = todayIdx >= 0 ? Math.max(0, todayIdx - 6) : 0;
+  const earlyCount  = windowStart; // number of rows to hide
+
+  function buildRow(r){
+    const rowCls=[r.rCls,r.fut?'fut':'obs'].join(' ').trim();
+    const pct = Math.round(r.FAW*100);
+    const txtColor = r.fut ? '#b0bec5' : r.FAW >= madFAW ? 'var(--g)' : 'var(--red)';
+    const favCell = r.fut
+      ? `<div style="display:inline-flex;align-items:center;gap:5px;">
+          <div style="width:38px;height:8px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
+            <div style="width:${pct}%;height:100%;background:#cbd5e1;border-radius:3px;"></div>
+          </div>
+          <span style="font-size:12px;color:#b0bec5;">${pct}%</span>
+        </div>`
+      : `<div style="display:inline-flex;align-items:center;gap:5px;">
+          <div style="width:38px;height:8px;background:#e2e8f0;border-radius:3px;overflow:hidden;position:relative;">
+            <div style="position:absolute;left:0;top:0;width:100%;height:100%;
+              background:#6366f1;
+              clip-path:inset(0 ${100-pct}% 0 0);border-radius:3px;"></div>
+          </div>
+          <span style="font-size:12px;font-weight:600;color:${txtColor};">${pct}%</span>
+        </div>`;
+    const isEdited = r.src==='field';
+    const rainDisp = r.precip>0 ? r.precip.toFixed(2) : '—';
+    const rainCell = !r.fut
+      ? `<td class="rain-cell${isEdited?' rain-edited':''}" data-ds="${r.ds}" data-meso="${r.mesoP.toFixed(3)}">${rainDisp}</td>`
+      : `<td>${rainDisp}</td>`;
+    let grossCell='—';
+    if(irrMode!=='none'&&r.irr>0) grossCell=`<strong>${irrMode==='refill'?r.irr.toFixed(2):(r.irr/r.eff).toFixed(2)}</strong>`;
+    else if(r.rCls==='r-run') grossCell='↻';
+    return `<tr class="${rowCls}">
+      <td class="mob-hide" style="color:var(--mut)">${r.i+1}</td>
+      <td class="tl">${r.ds}</td>
+      ${rainCell}
+      <td class="mob-hide">${r.ETo.toFixed(3)}</td>
+      <td class="mob-hide">${r.Kc.toFixed(2)}</td>
+      <td>${r.ETc.toFixed(3)}</td>
+      <td class="mob-hide">${r.S.toFixed(2)}</td>
+      <td>${favCell}</td>
+      <td class="mob-hide">${grossCell}</td>
+      <td><span class="tag ${r.tCls}">${r.rowSt}</span></td>
+    </tr>`;
+  }
+
+  // Populate early (hidden) rows
+  const earlyBtn  = document.getElementById('earlyRowsToggleWrap');
+  const tbodyE    = document.getElementById('tbodyEarly');
+  const tbodyDiv  = document.getElementById('tbodyDivider');
+  if(earlyCount > 0){
+    tbodyE.innerHTML =
+      tableData.slice(0, earlyCount).map(buildRow).join('');
+    document.getElementById('earlyDividerCell').textContent =
+      `↑ ${earlyCount} earlier row${earlyCount>1?'s':''} hidden · from planting to ${tableData[earlyCount-1].ds}`;
+    // Reset to collapsed state on each render
+    tbodyE.style.display    = 'none';
+    tbodyDiv.style.display  = 'none';
+    earlyBtn.style.display  = '';
+    _earlyExpanded = false;
+    document.getElementById('earlyRowsToggleBtn').textContent =
+      `▾ Show ${earlyCount} earlier row${earlyCount>1?'s':''} (from planting to ${tableData[earlyCount-1].ds})`;
+  } else {
+    tbodyE.innerHTML        = '';
+    tbodyE.style.display    = 'none';
+    tbodyDiv.style.display  = 'none';
+    earlyBtn.style.display  = 'none';
+  }
+
+  // Populate visible rows
+  document.getElementById('tbody').innerHTML =
+    tableData.slice(earlyCount).map(buildRow).join('');
+}
+
+// Toggle state for early rows
+let _earlyExpanded = false;
+function toggleEarlyRows(){
+  _earlyExpanded = !_earlyExpanded;
+  const tbodyE   = document.getElementById('tbodyEarly');
+  const tbodyDiv = document.getElementById('tbodyDivider');
+  const btn      = document.getElementById('earlyRowsToggleBtn');
+  const n        = tbodyE.rows.length;
+  tbodyE.style.display   = _earlyExpanded ? '' : 'none';
+  tbodyDiv.style.display = _earlyExpanded ? '' : 'none';
+  btn.textContent = _earlyExpanded
+    ? `▴ Hide earlier rows`
+    : `▾ Show ${n} earlier row${n>1?'s':''} (from planting to ${tableData[n-1]?.ds??''})`;
+}
+
+// Chart view mode: 'storage' or 'depletion'
+let chartMode = 'depletion';
+
+// Read a CSS variable from the document root (theme-aware)
+function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function toggleChartMode(mode){
+  chartMode = mode;
+  document.getElementById('btnStorage').classList.toggle('on',   mode==='storage');
+  document.getElementById('btnDepletion').classList.toggle('on', mode==='depletion');
+  if(hasResults){
+    const mad = parseFloat(document.getElementById('mad').value)/100;
+    renderCharts(mad);
+  }
+}
+
+function lineLegend(){
+  const txtColor = cssVar('--txt');
+  return{font:{size:12},color:txtColor,padding:14,usePointStyle:true,pointStyleWidth:28,
+    generateLabels(chart){
+      return Chart.defaults.plugins.legend.labels.generateLabels(chart)
+        .filter(item=>!chart.data.datasets[item.datasetIndex].label.startsWith('_'))
+        .map(item=>{item.pointStyle='line';item.fontColor=txtColor;return item;});
+    }};
+}
+
+function renderCharts(mad){
+  const labels   = tableData.map(r=>r.ds);
+  const madLabel = `${Math.round(mad*100)}% MAD`;
+
+  // Theme-aware colors
+  const clrTxt  = cssVar('--txt');
+  const clrMut  = cssVar('--mut');
+  const clrBdr  = cssVar('--bdr');
+
+  // Index of today in the dataset (for the vertical "today" marker)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayIdx = labels.indexOf(todayStr);
+
+  // Inline plugin: draws a full-height vertical dashed line at today
+  const todayPlugin = {
+    id: 'todayLine',
+    afterDraw(chart){
+      if(todayIdx < 0) return;
+      const {ctx, scales:{x, y}} = chart;
+      const xPos = x.getPixelForValue(todayIdx);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(xPos, y.top);
+      ctx.lineTo(xPos, y.bottom);
+      ctx.strokeStyle = clrMut;
+      ctx.lineWidth   = 2;
+      ctx.setLineDash([5,4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle  = clrMut;
+      ctx.font       = 'bold 11px system-ui,sans-serif';
+      ctx.textAlign  = 'center';
+      ctx.fillText('Today', xPos, y.top - 5);
+      ctx.restore();
+    }
+  };
+
+  // Shared scale defaults
+  const scaleDefaults = {
+    ticks:{ color: clrMut },
+    grid:{ color: clrBdr },
+    title:{ color: clrTxt },
+  };
+
+  // ── Precompute both views from existing tableData ──
+  const fc    = tableData.map(r=>+r.FC_in.toFixed(3));
+  const wp    = tableData.map(r=>+r.WP_in.toFixed(3));
+  const thr   = tableData.map(r=>+r.Thr_in.toFixed(3));
+  const sw    = tableData.map(r=>+r.S.toFixed(3));
+  const dep   = tableData.map(r=>+(r.FC_in-r.S).toFixed(3));
+  const madDep= tableData.map(r=>+(mad*r.PAW).toFixed(3));
+  const paw   = tableData.map(r=>+r.PAW.toFixed(3));
+
+  if(cTop) cTop.destroy();
+
+  if(chartMode==='storage'){
+    // ── Storage view: 0 at bottom, FC at top ──
+    cTop=new Chart(document.getElementById('chartTop').getContext('2d'),{
+      type:'line',
+      data:{labels,datasets:[
+        // Zone fills (hidden from legend)
+        {label:'_wp', data:wp,  borderWidth:0,pointRadius:0,tension:0,fill:'origin',  backgroundColor:'rgba(255,255,255,0)'},
+        {label:'_str',data:thr, borderWidth:0,pointRadius:0,tension:0,fill:{target:0},backgroundColor:'rgba(220,38,38,0.13)'},
+        {label:'_ok', data:fc,  borderWidth:0,pointRadius:0,tension:0,fill:{target:1},backgroundColor:'rgba(22,163,74,0.10)'},
+        // Data line
+        {label:'Storage (in)',  data:sw,  borderColor:'#1d4ed8',fill:false,borderWidth:2.5,pointRadius:0,tension:.25},
+        // Reference lines
+        {label:'Field Capacity',data:fc,  borderColor:'#16a34a',borderDash:[7,4],borderWidth:1.5,pointRadius:0,fill:false,tension:0},
+        {label:madLabel+' threshold', data:thr, borderColor:'#dc2626',borderDash:[5,3],borderWidth:1.5,pointRadius:0,fill:false,tension:0},
+        {label:'Wilting Point', data:wp,  borderColor:'#94a3b8',borderDash:[2,3],borderWidth:1,  pointRadius:0,fill:false,tension:0}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{position:'top',labels:lineLegend()},
+          tooltip:{filter:i=>!i.dataset.label.startsWith('_'),
+            callbacks:{label:c=>`${c.dataset.label}: ${(+c.raw).toFixed(2)} in`}}
+        },
+        scales:{
+          x:{display:false,...scaleDefaults},
+          y:{...scaleDefaults,title:{display:true,text:'Soil water storage (in)',font:{size:12},color:clrTxt},min:0}
+        }
+      },
+      plugins:[todayPlugin]
+    });
+
+  } else {
+    // ── Depletion view: 0 (full) at top, increasing downward ──
+    cTop=new Chart(document.getElementById('chartTop').getContext('2d'),{
+      type:'line',
+      data:{labels,datasets:[
+        // Zone fills (hidden from legend)
+        {label:'_zero',data:tableData.map(()=>0),borderWidth:0,pointRadius:0,tension:0,fill:'origin',backgroundColor:'rgba(255,255,255,0)'},
+        {label:'_ok',  data:madDep,borderWidth:0,pointRadius:0,tension:0,fill:{target:0},backgroundColor:'rgba(22,163,74,0.10)'},
+        {label:'_str', data:paw,   borderWidth:0,pointRadius:0,tension:0,fill:{target:1},backgroundColor:'rgba(220,38,38,0.13)'},
+        // Data line
+        {label:'Depletion (in)', data:dep,    borderColor:'#1d4ed8',fill:false,borderWidth:2.5,pointRadius:0,tension:.25},
+        // Reference lines
+        {label:'Field Capacity (0)', data:tableData.map(()=>0), borderColor:'#16a34a',borderDash:[7,4],borderWidth:1.5,pointRadius:0,fill:false,tension:0},
+        {label:madLabel+' trigger',  data:madDep, borderColor:'#dc2626',borderDash:[5,3],borderWidth:1.5,pointRadius:0,fill:false,tension:0},
+        {label:'Wilting Point',      data:paw,    borderColor:'#94a3b8',borderDash:[2,3],borderWidth:1,  pointRadius:0,fill:false,tension:0}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{position:'top',labels:lineLegend()},
+          tooltip:{filter:i=>!i.dataset.label.startsWith('_'),
+            callbacks:{label:c=>`${c.dataset.label}: ${(+c.raw).toFixed(2)} in`}}
+        },
+        scales:{
+          x:{display:false,...scaleDefaults},
+          y:{...scaleDefaults,reverse:true,min:0,
+            title:{display:true,text:'Soil water depletion (inches)',font:{size:12},color:clrTxt}}
+        }
+      },
+      plugins:[todayPlugin]
+    });
+  }
+
+  // ── Bottom bar chart — same for both modes ──
+  const maxPrecip = Math.max(0, ...tableData.map(r=>r.precip));
+  const maxIrr    = Math.max(0, ...tableData.map(r=>r.irr));
+  const yMax      = Math.max(maxPrecip, maxIrr) > 0
+    ? Math.ceil((Math.max(maxPrecip, maxIrr) + 0.25) * 10) / 10
+    : 2;
+
+  if(cBot) cBot.destroy();
+  cBot=new Chart(document.getElementById('chartBot').getContext('2d'),{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'Precipitation (in)',
+       data:tableData.map(r=>r.precip>0?+r.precip.toFixed(3):null),
+       backgroundColor:'rgba(6,182,212,0.75)',borderColor:'#0891b2',
+       borderWidth:1,borderRadius:2},
+      {label:'Irrigation — net (in)',
+       data:tableData.map(r=>r.irr>0?+r.irr.toFixed(3):null),
+       backgroundColor:'rgba(234,88,12,0.80)',borderColor:'#c2410c',
+       borderWidth:1,borderRadius:2}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'top',labels:{color:clrTxt,font:{size:12},boxWidth:14,padding:12}},
+        tooltip:{callbacks:{label:c=>c.raw!=null?`${c.dataset.label}: ${(+c.raw).toFixed(2)} in`:null}}},
+      scales:{
+        x:{...scaleDefaults,ticks:{...scaleDefaults.ticks,maxTicksLimit:14,font:{size:11},maxRotation:45}},
+        y:{...scaleDefaults,title:{display:true,text:'Depth (in)',font:{size:12},color:clrTxt},min:0,max:yMax}
+      }
+    }
+  });
+}
+
+
+// ═══════════════  THEME  ══════════════════════════
+
+function applyTheme(dark){
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  const btn = document.getElementById('themeBtn');
+  if(btn) btn.textContent = dark ? '☀ Light' : '🌙 Dark';
+  // Redraw Kc curve with updated color
+  drawKc();
+  // Redraw charts with updated colors if results are visible
+  if(hasResults){
+    const mad = parseFloat(document.getElementById('mad').value)/100;
+    renderCharts(mad);
+  }
+}
+
+function toggleTheme(){
+  const dark = document.documentElement.getAttribute('data-theme') !== 'dark';
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+  applyTheme(dark);
+}
+
+// Apply saved preference immediately (before first paint)
+(function(){
+  const saved = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(saved ? saved === 'dark' : prefersDark);
+})();
+
+
+// ═══════════════  MAP MODAL  ══════════════════════
+
+let leafletMap = null;
+let leafletMarker = null;
+let modalLat = userLat;
+let modalLng = userLng;
+
+function updateLocDisplay(){
+  document.getElementById('locName').textContent   = userLocName;
+  document.getElementById('locCoords').textContent =
+    `${userLat.toFixed(4)}° N, ${Math.abs(userLng).toFixed(4)}° W`;
+}
+
+function openMapModal(){
+  const modal = document.getElementById('mapModal');
+  modal.style.display = 'flex';
+  modalLat = userLat;
+  modalLng = userLng;
+  updateModalCoordDisplay(modalLat, modalLng);
+
+  if(!leafletMap){
+    leafletMap = L.map('leafletMap').setView([modalLat, modalLng], 9);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'© OpenStreetMap contributors', maxZoom:18
+    }).addTo(leafletMap);
+    leafletMarker = L.marker([modalLat, modalLng], {draggable:true}).addTo(leafletMap);
+    leafletMarker.on('dragend', e => {
+      const p = e.target.getLatLng();
+      modalLat = +p.lat.toFixed(6); modalLng = +p.lng.toFixed(6);
+      updateModalCoordDisplay(modalLat, modalLng);
+    });
+    leafletMap.on('click', e => {
+      modalLat = +e.latlng.lat.toFixed(6); modalLng = +e.latlng.lng.toFixed(6);
+      leafletMarker.setLatLng([modalLat, modalLng]);
+      updateModalCoordDisplay(modalLat, modalLng);
+    });
+  } else {
+    leafletMap.setView([modalLat, modalLng], 9);
+    leafletMarker.setLatLng([modalLat, modalLng]);
+    setTimeout(()=>leafletMap.invalidateSize(), 50);
+  }
+}
+
+function updateModalCoordDisplay(lat, lng){
+  document.getElementById('modalCoords').textContent =
+    `Selected: ${lat.toFixed(4)}° N, ${Math.abs(lng).toFixed(4)}° W`;
+}
+
+function closeMapModal(){
+  document.getElementById('mapModal').style.display = 'none';
+}
+
+function applyLocation(){
+  userLat = modalLat;
+  userLng = modalLng;
+  userLocName = `${userLat.toFixed(3)}° N, ${Math.abs(userLng).toFixed(3)}° W`;
+  wxCache.cacheKey = null;
+  updateLocDisplay();
+  closeMapModal();
+  if(hasResults) recompute();
+}
+
+
+// ═══════════════  CSV EXPORT  ═════════════════════
+
+function downloadCSV(){
+  const hdr=['Day','Date','Rain_src','Rain_in','Meso_Rain_in','ETo_in','Kc','Ks','ETc_in',
+             'Runoff_in','Irr_net_in','Irr_gross_in','PivotTime_days',
+             'FC_in','WP_in','SoilWater_in','FAW_pct','Status'];
+  const rows=tableData.map(r=>[
+    r.i+1,r.ds,r.src,
+    r.precip.toFixed(2),r.mesoP.toFixed(2),
+    r.ETo.toFixed(3),r.Kc.toFixed(2),r.Ks.toFixed(2),
+    r.ETc.toFixed(3),r.R.toFixed(3),
+    r.irr>0?r.irr.toFixed(2):0, r.irr>0?(r.irr/r.eff).toFixed(2):0,
+    r.irr>0?r.pivT.toFixed(2):0,
+    r.FC_in.toFixed(2),r.WP_in.toFixed(2),
+    r.S.toFixed(3),(r.FAW*100).toFixed(1),
+    r.rowSt.replace(/[▶↻✓⚠]/g,'').trim()
+  ]);
+  Object.assign(document.createElement('a'),{
+    href:URL.createObjectURL(new Blob([[hdr,...rows].map(r=>r.join(',')).join('\n')],{type:'text/csv'})),
+    download:'irrigation_schedule.csv'
+  }).click();
+}
+
+// ═══════════════  SPECS  ══════════════════════════
+
+function buildSpecsLines(){
+  const cropKey  = document.getElementById('crop').value;
+  const soilKey  = document.getElementById('soilType').value;
+  const plantStr = document.getElementById('plantingDate').value;
+  const crop     = CROPS[cropKey];
+  const soil     = SOILS[soilKey];
+
+  const rootDepth  = parseFloat(document.getElementById('rootDepth').value)||48;
+  const rdMode     = document.querySelector('input[name="rdMode"]:checked').value;
+  const initWater  = parseFloat(document.getElementById('initWater').value)||75;
+  const fieldArea  = parseFloat(document.getElementById('fieldArea').value)||125;
+  const pumpGPM    = parseFloat(document.getElementById('pumpGPM').value)||800;
+  const sprinkEff  = parseFloat(document.getElementById('sprinkEff').value)||85;
+  const adRaw      = document.getElementById('appDepth').value;
+  const appDepth   = adRaw==='custom'?(parseFloat(document.getElementById('appDepthCustom').value)||1):parseFloat(adRaw);
+  const irrMode    = document.querySelector('input[name="irrMode"]:checked').value;
+  const mad        = parseFloat(document.getElementById('mad').value);
+  const estabDays  = parseInt(document.getElementById('estabDays').value)||0;
+  const allocOn    = document.getElementById('allocEnabled').checked;
+  const allocLimit = parseFloat(document.getElementById('allocLimit').value)||10;
+
+  const eff      = sprinkEff/100;
+  const revDays  = (fieldArea*appDepth*27154)/(pumpGPM*eff*60*24);
+  const PAW      = soil.FC - soil.WP;
+  const totalDays= kc.li+kc.ld+kc.lm+kc.ll;
+  const harvestDate = plantStr ? (() => {
+    const d = new Date(plantStr+'T00:00:00');
+    d.setDate(d.getDate()+totalDays);
+    return d.toISOString().split('T')[0];
+  })() : 'N/A';
+
+  const irrLabel = {fixed:'MAD-triggered fixed depth',refill:'Refill to field capacity',none:'No irrigation (dryland)'}[irrMode]||irrMode;
+
+  return [
+    `Generated: ${new Date().toLocaleString()}`,
+    ``,
+    `── LOCATION ───────────────────────────────────`,
+    `Location              : ${userLocName}`,
+    `Latitude              : ${userLat.toFixed(4)}° N`,
+    `Longitude             : ${Math.abs(userLng).toFixed(4)}° W`,
+    ``,
+    `── CROP & SEASON ──────────────────────────────`,
+    `Crop                  : ${crop.name}`,
+    `Planting date         : ${plantStr||'not set'}`,
+    `Estimated harvest     : ${harvestDate}`,
+    `Season length         : ${totalDays} days`,
+    ``,
+    `── CROP COEFFICIENTS (Kc) ─────────────────────`,
+    `Kc initial            : ${kc.ki.toFixed(2)}`,
+    `Kc mid-season         : ${kc.km.toFixed(2)}`,
+    `Kc end                : ${kc.ke.toFixed(2)}`,
+    `Stage — Initial       : ${kc.li} days`,
+    `Stage — Development   : ${kc.ld} days`,
+    `Stage — Mid-season    : ${kc.lm} days`,
+    `Stage — Late          : ${kc.ll} days`,
+    ``,
+    `── SOIL ───────────────────────────────────────`,
+    `Texture               : ${soilKey.replace(/([A-Z])/g,' $1').trim()}`,
+    `Field capacity        : ${soil.FC.toFixed(1)} % vol.`,
+    `Wilting point         : ${soil.WP.toFixed(1)} % vol.`,
+    `Plant-available water : ${PAW.toFixed(1)} % vol.`,
+    `Curve number (CN)     : ${soil.CN}`,
+    ``,
+    `── ROOT ZONE ──────────────────────────────────`,
+    `Root depth profile    : ${rdMode==='dynamic'?'Dynamic':'Constant'}`,
+    `Maximum root depth    : ${rootDepth} in`,
+    `Initial soil water    : ${initWater} % TAW`,
+    ``,
+    `── IRRIGATION SYSTEM ──────────────────────────`,
+    `Field size            : ${fieldArea} ac`,
+    `Pump capacity         : ${pumpGPM} gpm`,
+    `System efficiency     : ${sprinkEff} %`,
+    `Application depth     : ${appDepth.toFixed(2)} in/pass`,
+    `Revolution time       : ${revDays.toFixed(1)} days`,
+    ``,
+    `── IRRIGATION STRATEGY ────────────────────────`,
+    `Strategy              : ${irrLabel}`,
+    ...(irrMode!=='none'?[
+    `MAD trigger           : ${mad} %`,
+    `Establishment period  : ${estabDays} days (no irrigation)`,
+    ]:[]),
+    `Water allocation      : ${allocOn?allocLimit.toFixed(1)+' in/season':'Not enabled'}`,
+    ``,
+    `── MODEL PARAMETERS ───────────────────────────`,
+    `ETo method            : FAO-56 Penman-Monteith (Open-Meteo)`,
+    `Runoff method         : SCS Curve Number`,
+    `Forecast window       : ${FORECAST_DAYS} days`,
+    `Rain forecast cutoff  : ${PRECIP_FORECAST_DAYS} days ahead`,
+    `Rain probability min  : ${PRECIP_PROB_THRESHOLD} %`,
+    `Reference             : Allen et al. (1998), FAO-56`,
+  ];
+}
+
+function openSpecsModal(){
+  const lines = buildSpecsLines();
+  const el    = document.getElementById('specsContent');
+  // Render section headers in accent color, rest as plain text
+  el.innerHTML = lines.map(l =>
+    l.startsWith('──')
+      ? `<span class="specs-section">${l}</span>`
+      : escHtml(l)
+  ).join('\n');
+  document.getElementById('specsModal').style.display = 'flex';
+}
+
+function escHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function downloadSpecs(){
+  const lines    = buildSpecsLines();
+  const header   = ['Daily Rootzone Irrigation Planner — Field Specifications'];
+  const cropKey  = document.getElementById('crop').value;
+  const plantStr = document.getElementById('plantingDate').value;
+  const text     = [header[0], ...lines].join('\n');
+  Object.assign(document.createElement('a'),{
+    href: URL.createObjectURL(new Blob([text],{type:'text/plain'})),
+    download: `drip-specs-${cropKey}-${(plantStr||'nodate').replace(/-/g,'')}.txt`
+  }).click();
+}
+
+
+</script>
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Map modal -->
+<div id="mapModal" class="map-modal-overlay" style="display:none;">
+  <div class="map-modal-box">
+    <h3>Select Field Location</h3>
+    <p style="font-size:13px;color:var(--mut);margin:0 0 8px;">Click anywhere on the map or drag the marker to your field location.</p>
+    <div id="leafletMap"></div>
+    <div class="map-coords" id="modalCoords"></div>
+    <div class="map-modal-btns">
+      <button class="btn-sm" onclick="closeMapModal()">Cancel</button>
+      <button class="btn-go" onclick="applyLocation()">Use This Location</button>
+    </div>
+  </div>
+</div>
+
+<!-- About / Attributions modal -->
+<div id="aboutModal" class="map-modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="map-modal-box">
+    <h3>Attributions &amp; License</h3>
+
+    <div class="about-section">
+      <h4>Data Sources</h4>
+      <dl class="about-dl">
+        <div class="about-row">
+          <dt>Weather &amp; ETo</dt>
+          <dd><a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> — FAO-56 Penman-Monteith ETo and forecast weather. Free tier for non-commercial use (CC BY 4.0). Commercial use requires a paid subscription.</dd>
+        </div>
+        <div class="about-row">
+          <dt>Map tiles</dt>
+          <dd><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors — Open Database License (ODbL).</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="about-section">
+      <h4>Libraries</h4>
+      <dl class="about-dl">
+        <div class="about-row">
+          <dt>Leaflet 1.9.4</dt>
+          <dd>Interactive maps — <a href="https://leafletjs.com" target="_blank" rel="noopener">leafletjs.com</a> — BSD 2-Clause.</dd>
+        </div>
+        <div class="about-row">
+          <dt>Chart.js 4.4.1</dt>
+          <dd>Data visualization — <a href="https://www.chartjs.org" target="_blank" rel="noopener">chartjs.org</a> — MIT.</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="about-section">
+      <h4>Methods</h4>
+      <dl class="about-dl">
+        <div class="about-row">
+          <dt>ET model</dt>
+          <dd>FAO-56 Penman-Monteith — Allen et al. (1998), FAO Irrigation and Drainage Paper No. 56.</dd>
+        </div>
+        <div class="about-row">
+          <dt>Runoff</dt>
+          <dd>SCS Curve Number — USDA National Engineering Handbook.</dd>
+        </div>
+        <div class="about-row">
+          <dt>Kc curves</dt>
+          <dd>FAO-56 crop coefficients adapted for Kansas growing conditions.</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="about-section">
+      <h4>License</h4>
+      <div class="license-box">
+        <p>© 2025 Soil Water Processes Lab, Department of Agronomy, Kansas State University.</p>
+        <p>Free for non-commercial, academic, and research use with attribution. This includes educational use, university extension programs, and personal experimentation.</p>
+        <p>Commercial use — including use by farming operations, agricultural consultants, or any for-profit purpose — requires a written license agreement. Contact the Soil Water Processes Lab at Kansas State University.</p>
+        <p>Note: commercial use also requires a paid Open-Meteo subscription in accordance with their terms of service.</p>
+      </div>
+    </div>
+
+    <div class="map-modal-btns">
+      <button class="btn-go" onclick="document.getElementById('aboutModal').style.display='none'">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Specs modal -->
+<div id="specsModal" class="map-modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="map-modal-box">
+    <h3>Field &amp; Model Specifications</h3>
+    <div id="specsContent"></div>
+    <div class="map-modal-btns" style="margin-top:14px;">
+      <button class="btn-sm" onclick="document.getElementById('specsModal').style.display='none'">Close</button>
+      <button class="btn-go" onclick="downloadSpecs()">⬇ Download .txt</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
