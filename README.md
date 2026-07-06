@@ -1,4 +1,4 @@
-# Daily Irrigation Planner
+# DRIP: Daily Rootzone Irrigation Planner
 
 A browser-native scheduling tool that combines real-time weather data, a soil water balance model, and AI-powered recommendations to help irrigators make informed and timely decisions.
 
