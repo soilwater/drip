@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-7CGPVD6EZK"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-7CGPVD6EZK');
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DRIP</title>
@@ -42,27 +51,62 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 body,header,.card,select,input,button{transition:background .2s,color .2s,border-color .2s;}
 
 /* ── Header ── */
-header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1px solid var(--bdr);}
-.header-inner{max-width:var(--mw);margin:0 auto;padding:11px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1px solid var(--bdr);position:relative;z-index:1001;}
+.header-inner{max-width:var(--mw);margin:0 auto;padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:nowrap;}
 .brand{font-size:16px;font-weight:700;color:var(--txt);letter-spacing:-.01em;display:flex;align-items:center;gap:9px;}
 .brand .dot{width:11px;height:11px;border-radius:50%;background:var(--g);}
 .brand small{font-weight:500;color:var(--mut);font-size:12px;}
-.header-logo,.header-logo-dark{display:block;height:40px;width:auto;}
+/* Full wordmark on wide screens; compact pivot mark takes over on narrow ones,
+   since the wordmark alone is ~355px wide at 40px tall and swamps a phone header. */
+.header-logo,.header-logo-dark{display:block;height:40px;width:auto;flex-shrink:0;}
 .header-logo-dark{display:none;}
 [data-theme="dark"] .header-logo{display:none;}
 [data-theme="dark"] .header-logo-dark{display:block;}
-.header-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.logo-mark{display:none;height:34px;width:34px;flex-shrink:0;}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:nowrap;flex-shrink:0;}
+.menu-wrap{position:relative;}
+.menu-drop{display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--bg-card);
+  border:1px solid var(--bdr);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
+  min-width:170px;z-index:1002;padding:5px 0;}
+.menu-drop.open{display:block;}
+.menu-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 14px;font-size:14px;
+  font-family:inherit;font-weight:500;color:var(--txt);background:none;border:none;cursor:pointer;
+  text-align:left;white-space:nowrap;}
+.menu-item:hover{background:var(--sllt);}
+.menu-sep{height:1px;background:var(--bdr);margin:4px 0;}
+#runBtn{white-space:nowrap;}
 
 /* ── Summary chips ── */
-.chips{display:flex;gap:7px;flex-wrap:wrap;}
-.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:5px 12px;border-radius:20px;border:1.5px solid transparent;background:var(--sllt);color:var(--mut);}
-.chip .n{font-weight:800;font-size:14px;color:var(--txt);}
+.chips{display:flex;gap:5px;flex-wrap:nowrap;min-width:0;}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;padding:4px 9px;border-radius:20px;border:1.5px solid transparent;background:var(--sllt);color:var(--mut);white-space:nowrap;}
+.chip .n{font-weight:800;font-size:13px;color:var(--txt);}
 /* A status chip lights up in its colour only while it holds fields; an empty chip
-   (.zero) dims to a neutral outline so "irrigate now" reads as a real alert. */
+   (.zero) dims to a neutral outline so "irrigate" reads as a real alert. */
 .chip.red{background:var(--redsoft);color:var(--red);} .chip.red .n{color:var(--red);}
 .chip.amb{background:var(--ambsoft);color:var(--amb);} .chip.amb .n{color:var(--amb);}
 .chip.grn{background:var(--grnsoft);color:var(--grn);} .chip.grn .n{color:var(--grn);}
 .chip.zero{background:transparent;border-color:var(--bdr);color:var(--mut);} .chip.zero .n{color:var(--mut);}
+
+/* Narrow screens: drop the wordmark for the compact mark and tighten everything
+   just enough that logo + chips + Run + menu still share one row. */
+@media (max-width:820px){
+  .header-inner{gap:7px;padding:8px 10px;}
+  .header-logo,.header-logo-dark,
+  [data-theme="dark"] .header-logo-dark{display:none;}
+  .logo-mark{display:block;}
+  .chips{gap:4px;}
+  .chip{font-size:11.5px;padding:3px 7px;gap:3px;}
+  .chip .n{font-size:12px;}
+  #runBtn{font-size:13px;padding:7px 9px;}
+  .header-right{gap:5px;}
+  .menu-drop{min-width:160px;}
+}
+@media (max-width:400px){
+  .header-inner{gap:5px;padding:8px 8px;}
+  .logo-mark{height:30px;width:30px;}
+  .chip{font-size:11px;padding:3px 6px;}
+  #runBtn{font-size:12.5px;padding:7px 8px;}
+}
 
 /* ── Buttons ── */
 .btn{font-family:inherit;font-size:14px;cursor:pointer;border-radius:6px;padding:8px 14px;border:1.5px solid var(--bdr);
@@ -135,6 +179,8 @@ header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1
 .flag{display:none;}
 .fr-main{flex:1;min-width:0;}
 .fr-name{font-weight:700;font-size:14.5px;color:var(--txt);display:flex;align-items:center;gap:7px;}
+.fr-rain{font-size:12px;color:var(--mut);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fr-rain.on{color:var(--teal);font-weight:600;}
 .fr-sub{font-size:12.5px;color:var(--mut);margin-top:2px;}
 .fr-status{display:inline-flex;align-items:center;font-size:12px;font-weight:700;margin-top:7px;padding:3px 10px;border-radius:20px;}
 .fr-status.red{background:var(--redsoft);color:var(--red);} .fr-status.amb{background:var(--ambsoft);color:var(--amb);}
@@ -146,9 +192,9 @@ header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1
 .empty b{color:var(--txt);}
 
 /* ── Modal ── */
-.overlay{position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;}
+.overlay{position:fixed;inset:0;z-index:1500;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;}
 .modal{background:var(--bg-card);border-radius:11px;box-shadow:0 10px 40px rgba(0,0,0,.4);width:100%;display:flex;flex-direction:column;max-height:92vh;}
-.modal.w-form{max-width:560px;} .modal.w-detail{max-width:860px;} .modal.w-map{max-width:640px;} .modal.w-digest{max-width:720px;}
+.modal.w-form{max-width:560px;} .modal.w-detail{max-width:860px;} .modal.w-digest{max-width:720px;}
 .modal-hdr{padding:16px 20px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;}
 .modal-hdr h3{font-size:17px;color:var(--txt);margin:0;}
 .modal-body{padding:18px 20px;overflow-y:auto;}
@@ -185,7 +231,7 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 .kc-section-hdr .kc-lbl{font-size:13px;font-weight:600;color:var(--mut);}
 .kc-total{font-size:12.5px;color:var(--mut);}
 .kc-wrap{display:flex;flex-direction:column;}
-#formKcSvg{display:block;width:100%;height:170px;border:1.5px solid var(--bdr);border-radius:6px;background:var(--sllt);touch-action:none;}
+#formKcSvg{display:block;width:100%;height:210px;border:1.5px solid var(--bdr);border-radius:6px;background:var(--sllt);touch-action:none;}
 .kc-hint{font-size:12px;color:var(--mut);margin-top:5px;}
 
 /* ── Detail ── */
@@ -252,14 +298,35 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
   <div class="header-inner">
     <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0ODAiIGhlaWdodD0iNTQiIHZpZXdCb3g9IjAgMCA0ODAgNTQiIHJvbGU9ImltZyI+Cjx0aXRsZT5EUklQOiBEYWlseSBSb290em9uZSBJcnJpZ2F0aW9uIFBsYW5uZXI8L3RpdGxlPgo8ZGVzYz5DZW50ZXIgcGl2b3QgbWFyayB3aXRoIHdvcmRtYXJrPC9kZXNjPgo8ZGVmcz48Y2xpcFBhdGggaWQ9ImhjIj48Y2lyY2xlIGN4PSIyNyIgY3k9IjI3IiByPSIyMyIvPjwvY2xpcFBhdGg+PC9kZWZzPgo8ZyBjbGlwLXBhdGg9InVybCgjaGMpIj4KICA8cGF0aCBkPSJNIDI3IDI3ICBMIDI3IDQgIEEgMjMgMjMgMCAwIDEgNDcgNDAgWiIgZmlsbD0iI2RjZmNlNyIvPgo8L2c+CjxjaXJjbGUgY3g9IjI3IiBjeT0iMjciIHI9IjIzIiBmaWxsPSJub25lIiBzdHJva2U9IiMxNmEzNGEiIHN0cm9rZS13aWR0aD0iMiIvPgo8Y2lyY2xlIGN4PSIyNyIgY3k9IjI3IiByPSIxMyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMTZhMzRhIiBzdHJva2Utd2lkdGg9IjEiIHN0cm9rZS1vcGFjaXR5PSIwLjQiLz4KPGxpbmUgeDE9IjI3IiB5MT0iNCIgIHgyPSIyNyIgeTI9IjkiICBzdHJva2U9IiMxNmEzNGEiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGxpbmUgeDE9IjUwIiB5MT0iMjciIHgyPSI0NSIgeTI9IjI3IiBzdHJva2U9IiMxNmEzNGEiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGxpbmUgeDE9IjI3IiB5MT0iNTAiIHgyPSIyNyIgeTI9IjQ1IiBzdHJva2U9IiMxNmEzNGEiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGxpbmUgeDE9IjQiICB5MT0iMjciIHgyPSI5IiAgeTI9IjI3IiBzdHJva2U9IiMxNmEzNGEiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGxpbmUgeDE9IjI3IiB5MT0iMjciIHgyPSI0NyIgeTI9IjQwIiBzdHJva2U9IiMxNmEzNGEiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGNpcmNsZSBjeD0iMjciIGN5PSIyNyIgcj0iMyIgZmlsbD0iIzE2YTM0YSIvPgo8Y2lyY2xlIGN4PSI0NyIgY3k9IjQwIiByPSIyLjUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzE2YTM0YSIgc3Ryb2tlLXdpZHRoPSIyIi8+CjwhLS0gRFJJUCBhY3JvbnltIC0tPgo8dGV4dCB4PSI2MiIgeT0iMjQiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEJsaW5rTWFjU3lzdGVtRm9udCwnU2Vnb2UgVUknLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTgiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiM1ODE2YTMiIGxldHRlci1zcGFjaW5nPSIxIj5EUklQPC90ZXh0Pgo8IS0tIEZ1bGwgbmFtZSAtLT4KPHRleHQgeD0iNjIiIHk9IjQyIiBmb250LWZhbWlseT0iLWFwcGxlLXN5c3RlbSxCbGlua01hY1N5c3RlbUZvbnQsJ1NlZ29lIFVJJyxzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiBmb250LXdlaWdodD0iNDAwIiBmaWxsPSIjMGYxNzJhIj5EYWlseSBSb290em9uZSBJcnJpZ2F0aW9uIFBsYW5uZXI8L3RleHQ+Cjwvc3ZnPgo=" alt="DRIP — Daily Rootzone Irrigation Planner" class="header-logo">
     <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0ODAiIGhlaWdodD0iNTQiIHZpZXdCb3g9IjAgMCA0ODAgNTQiIHJvbGU9ImltZyI+Cjx0aXRsZT5EUklQOiBEYWlseSBSb290em9uZSBJcnJpZ2F0aW9uIFBsYW5uZXI8L3RpdGxlPgo8ZGVzYz5DZW50ZXIgcGl2b3QgbWFyayB3aXRoIHdvcmRtYXJrPC9kZXNjPgo8ZGVmcz48Y2xpcFBhdGggaWQ9ImhjIj48Y2lyY2xlIGN4PSIyNyIgY3k9IjI3IiByPSIyMyIvPjwvY2xpcFBhdGg+PC9kZWZzPgo8ZyBjbGlwLXBhdGg9InVybCgjaGMpIj4KICA8cGF0aCBkPSJNIDI3IDI3ICBMIDI3IDQgIEEgMjMgMjMgMCAwIDEgNDcgNDAgWiIgZmlsbD0iIzE0NTMyZCIvPgo8L2c+CjxjaXJjbGUgY3g9IjI3IiBjeT0iMjciIHI9IjIzIiBmaWxsPSJub25lIiBzdHJva2U9IiM0YWRlODAiIHN0cm9rZS13aWR0aD0iMiIvPgo8Y2lyY2xlIGN4PSIyNyIgY3k9IjI3IiByPSIxMyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNGFkZTgwIiBzdHJva2Utd2lkdGg9IjEiIHN0cm9rZS1vcGFjaXR5PSIwLjQiLz4KPGxpbmUgeDE9IjI3IiB5MT0iNCIgIHgyPSIyNyIgeTI9IjkiICBzdHJva2U9IiM0YWRlODAiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGxpbmUgeDE9IjUwIiB5MT0iMjciIHgyPSI0NSIgeTI9IjI3IiBzdHJva2U9IiM0YWRlODAiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGxpbmUgeDE9IjI3IiB5MT0iNTAiIHgyPSIyNyIgeTI9IjQ1IiBzdHJva2U9IiM0YWRlODAiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGxpbmUgeDE9IjQiICB5MT0iMjciIHgyPSI5IiAgeTI9IjI3IiBzdHJva2U9IiM0YWRlODAiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGxpbmUgeDE9IjI3IiB5MT0iMjciIHgyPSI0NyIgeTI9IjQwIiBzdHJva2U9IiM0YWRlODAiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPGNpcmNsZSBjeD0iMjciIGN5PSIyNyIgcj0iMyIgZmlsbD0iIzRhZGU4MCIvPgo8Y2lyY2xlIGN4PSI0NyIgY3k9IjQwIiByPSIyLjUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzRhZGU4MCIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjYyIiB5PSIyNCIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sQmxpbmtNYWNTeXN0ZW1Gb250LCdTZWdvZSBVSScsc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxOCIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iI2ZmZmZmZiIgbGV0dGVyLXNwYWNpbmc9IjEiPkRSSVA8L3RleHQ+Cjx0ZXh0IHg9IjYyIiB5PSI0MiIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sQmxpbmtNYWNTeXN0ZW1Gb250LCdTZWdvZSBVSScsc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZm9udC13ZWlnaHQ9IjQwMCIgZmlsbD0iIzk0YTNiOCI+RGFpbHkgUm9vdHpvbmUgSXJyaWdhdGlvbiBQbGFubmVyPC90ZXh0Pgo8L3N2Zz4=" alt="DRIP — Daily Rootzone Irrigation Planner" class="header-logo-dark">
+    <svg class="logo-mark" viewBox="0 0 54 54" role="img" aria-label="DRIP">
+      <defs><clipPath id="mc"><circle cx="27" cy="27" r="23"/></clipPath></defs>
+      <g clip-path="url(#mc)"><path d="M 27 27 L 27 4 A 23 23 0 0 1 47 40 Z" fill="var(--grnsoft)"/></g>
+      <circle cx="27" cy="27" r="23" fill="none" stroke="var(--grn)" stroke-width="2"/>
+      <circle cx="27" cy="27" r="13" fill="none" stroke="var(--grn)" stroke-width="1" stroke-opacity="0.4"/>
+      <line x1="27" y1="4" x2="27" y2="9" stroke="var(--grn)" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="50" y1="27" x2="45" y2="27" stroke="var(--grn)" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="27" y1="50" x2="27" y2="45" stroke="var(--grn)" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="4" y1="27" x2="9" y2="27" stroke="var(--grn)" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="27" y1="27" x2="47" y2="40" stroke="var(--grn)" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="27" cy="27" r="3" fill="var(--grn)"/>
+      <circle cx="47" cy="40" r="2.5" fill="none" stroke="var(--grn)" stroke-width="2"/>
+    </svg>
     <div class="chips" id="chips"></div>
     <div class="header-right">
-      <button class="btn primary" id="runBtn" title="Fetch weather and simulate all fields · Shift+click to force re-fetch">▶ Run all fields</button>
-      <button class="btn sm" onclick="openDigest()" title="Compile per-field data for an AI agent">✦ Farm digest</button>
-      <button class="btn sm" onclick="exportFields()" title="Save all fields to a JSON file">⬇ Export</button>
-      <button class="btn sm" onclick="triggerImport()" title="Load fields from a JSON file">⬆ Import</button>
+      <button class="btn primary" id="runBtn" style="white-space:nowrap" title="Fetch weather and simulate all fields · Shift+click to force re-fetch">▶ Run fields</button>
+      <div class="menu-wrap" id="menuWrap">
+        <button class="btn sm" id="menuBtn" onclick="toggleMenu()" title="More options">⋯</button>
+        <div class="menu-drop" id="menuDrop">
+          <button class="menu-item" onclick="openDigest();closeMenu()">✦ Farm digest</button>
+          <div class="menu-sep"></div>
+          <button class="menu-item" onclick="exportFields();closeMenu()">⬇ Export fields</button>
+          <button class="menu-item" onclick="triggerImport();closeMenu()">⬆ Import fields</button>
+          <div class="menu-sep"></div>
+          <button class="menu-item" id="themeItem" onclick="toggleTheme()">🌙 Toggle theme</button>
+          <button class="menu-item" onclick="openAbout();closeMenu()">ⓘ About &amp; License</button>
+        </div>
+      </div>
       <input type="file" id="importFileInput" accept=".json,application/json" style="display:none" onchange="handleImportFile(event)">
-      <button class="btn ghost" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">🌙</button>
     </div>
   </div>
 </header>
@@ -329,11 +396,12 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
             <option value="hybrid">Hybrid — min(refill to FC, fixed)</option>
             <option value="fixed">Fixed depth</option>
             <option value="refill">Refill to field capacity</option>
+            <option value="interval">Fixed depth on a schedule</option>
             <option value="none">No irrigation (dryland)</option>
           </select>
         </div>
         <div class="field" id="madWrap">
-          <label>MAD trigger</label>
+          <label id="madLbl">MAD trigger</label>
           <div class="seg" id="madSeg">
             <button type="button" data-v="30">30%</button>
             <button type="button" data-v="40">40%</button>
@@ -345,6 +413,10 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
         <div class="field" id="depthWrap">
           <label id="depthLbl">Application depth (in)</label>
           <input type="number" id="fDepth" value="1.0" step="0.1" min="0.1" max="5" oninput="updateRevTime()">
+        </div>
+        <div class="field" id="intervalWrap" style="display:none;">
+          <label>Days between waterings</label>
+          <input type="number" id="fInterval" value="7" min="1" max="60" step="1">
         </div>
         <div class="strat-note" id="stratNote"></div>
       </div>
@@ -373,18 +445,43 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
             </select>
           </div>
           <div class="adv-group-label">System &amp; operational</div>
+          <div class="field full">
+            <label>Irrigation system</label>
+            <select id="fSystem" onchange="onFormSystem()"></select>
+          </div>
           <div class="field">
             <label>Efficiency (%)</label>
-            <input type="number" id="fEff" value="85" min="50" max="100" oninput="updateRevTime()">
+            <input type="number" id="fEff" value="85" min="30" max="100" oninput="updateRevTime()">
+          </div>
+          <div class="field">
+            <label id="capLbl">System capacity</label>
+            <div style="display:flex;gap:6px;">
+              <input type="number" id="fCap" value="800" min="0.01" step="any" style="flex:1;min-width:0;" oninput="updateRevTime()">
+              <select id="fCapUnit" style="width:96px;flex-shrink:0;" onchange="updateRevTime()">
+                <option value="gpm">gpm</option>
+                <option value="inday">in/day</option>
+              </select>
+            </div>
+          </div>
+          <div class="field full">
+            <span class="hint" id="revTimeHint" style="display:none;font-size:12px;color:var(--mut);"></span>
           </div>
           <div class="field">
             <label>Seasonal allocation (in)</label>
             <input type="number" id="fAlloc" value="" placeholder="none" step="0.5" min="0">
           </div>
-          <div class="field">
-            <label>Pump capacity (gpm)</label>
-            <input type="number" id="fPump" value="800" min="1" oninput="updateRevTime()">
-            <span class="hint" id="revTimeHint" style="display:none;margin-top:4px;font-size:12px;color:var(--mut);"></span>
+          <div class="field full" id="skipRainWrap">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
+              <input type="checkbox" id="fSkipRain" style="width:15px;height:15px;accent-color:var(--g);margin:0;flex-shrink:0;" onchange="onFormSkipRain()">
+              Hold irrigation if rain is likely
+            </label>
+            <div id="skipRainOpts" style="display:none;align-items:center;gap:7px;margin-top:7px;font-size:13px;color:var(--mut);flex-wrap:wrap;">
+              <span>Skip when</span>
+              <input type="number" id="fSkipProb" value="60" min="10" max="100" step="5" style="width:70px;">
+              <span>% chance within</span>
+              <input type="number" id="fSkipDays" value="2" min="1" max="7" step="1" style="width:62px;">
+              <span>day(s)</span>
+            </div>
           </div>
 
         </div>
@@ -398,7 +495,7 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
             </div>
           </div>
           <div class="kc-wrap">
-            <svg id="formKcSvg" viewBox="0 0 500 170" preserveAspectRatio="none"></svg>
+            <svg id="formKcSvg" viewBox="0 0 500 210" preserveAspectRatio="none"></svg>
             <p class="kc-hint">Drag ● up/down → Kc value &nbsp;·&nbsp; left/right → stage length. Leave alone to use the standard curve for this crop.</p>
           </div>
         </div>
@@ -448,7 +545,8 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
       <div class="status-legend">
         <div class="sl-row"><span class="tag grn">OK</span> Soil is above the MAD trigger — no action needed.</div>
         <div class="sl-row"><span class="tag red">Irrigate</span> Soil is at or below the MAD trigger — irrigation applied (or due) today.</div>
-        <div class="sl-row"><span class="tag blu">Running Xd</span> Pivot is mid-revolution; "Xd" is the days remaining until this pass completes.</div>
+        <div class="sl-row"><span class="tag blu">Running Xd</span> System is mid-application; "Xd" is the days remaining until this pass completes.</div>
+        <div class="sl-row"><span class="tag blu">Rain hold</span> Irrigation was due but is held back because rain is likely within your set window.</div>
         <div class="sl-row"><span class="tag amb">Stress</span> Soil water is below the MAD trigger between irrigations.</div>
         <div class="sl-row"><span class="tag amb">EOD&lt;MAD</span> Soil started the day OK but crop water use dropped it below the MAD trigger by end of day.</div>
         <div class="sl-row"><span class="tag red">Alloc. out</span> Soil is dry but the seasonal water allocation has been used up.</div>
@@ -457,18 +555,6 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
   </div>
 </div>
 
-<!-- MAP LOCATE MODAL (first run / recenter) -->
-<div class="overlay" id="locateModal" style="display:none;">
-  <div class="modal w-map">
-    <div class="modal-hdr"><h3>Center the map on your farm</h3><button class="x" onclick="document.getElementById('locateModal').style.display='none'">&times;</button></div>
-    <div class="modal-body">
-      <p class="hint" style="margin-bottom:8px;">Search a place, or just pan/zoom the main map to your area, then start adding fields.</p>
-      <input type="text" id="placeSearch" placeholder="Type a town or address and press Enter" onkeydown="if(event.key==='Enter')doGeocode()">
-      <div id="geoResults" style="margin-top:10px;"></div>
-    </div>
-    <div class="modal-ftr"><button class="btn primary" onclick="document.getElementById('locateModal').style.display='none'">Done</button></div>
-  </div>
-</div>
 
 <!-- DIGEST MODAL -->
 <div class="overlay" id="digestModal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
@@ -527,6 +613,30 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
   </div>
 </div>
 
+<!-- ABOUT / LICENSE MODAL -->
+<div class="overlay" id="aboutModal" style="display:none;" onclick="if(event.target===this)closeAbout()">
+  <div class="modal w-digest">
+    <div class="modal-hdr">
+      <h3>About DRIP</h3>
+      <button class="x" onclick="closeAbout()">&times;</button>
+    </div>
+    <div class="modal-body" style="font-size:14px;line-height:1.7;color:var(--txt);">
+      <p style="margin-bottom:12px;"><strong>DRIP — Daily Rootzone Irrigation Planner</strong> is a field-by-field irrigation scheduling tool that combines daily weather data with a soil water balance model to help farmers decide when and how much to irrigate.</p>
+      <p style="margin-bottom:12px;">Weather data is retrieved from <a href="https://open-meteo.com" target="_blank" rel="noopener" style="color:var(--g);">Open-Meteo</a> (open-source, CC BY 4.0). Soil texture auto-detection uses the USDA Web Soil Survey dataset. Evapotranspiration is estimated using the FAO-56 Penman-Monteith method.</p>
+      <p style="margin-bottom:18px;">Developed at Kansas State University. For questions or feedback, contact the authors.</p>
+      <div style="background:var(--sllt);border:1px solid var(--bdr);border-radius:7px;padding:14px 16px;margin-bottom:6px;">
+        <p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-bottom:8px;">License — PolyForm Noncommercial 1.0.0 (provisional)</p>
+        <p style="font-size:13px;margin-bottom:8px;">You are free to use, copy, and adapt this software for <strong>noncommercial purposes</strong>, including use by individual farmers, ranchers, agronomists, researchers, and public institutions.</p>
+        <p style="font-size:13px;margin-bottom:8px;"><strong>Commercial use is not permitted</strong> without written permission from the authors. This includes, but is not limited to, embedding this software in a commercial product or service, white-labeling, or reselling access to it.</p>
+        <p style="font-size:13px;margin-bottom:0;">This license is provisional and subject to change. Full license text: <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" rel="noopener" style="color:var(--g);">polyformproject.org</a>.</p>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn primary" onclick="closeAbout()">I understand — continue</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -562,6 +672,20 @@ const SOILS = {
 const FORECAST_DAYS=7, PRECIP_FORECAST_DAYS=3, PRECIP_PROB_THRESHOLD=50;
 const DEDUP_KM=4;          // fields within this radius share one weather request
 const WX_MAX_AGE_MS=6*3600*1000;
+const GAL_PER_AC_IN=27154; // gallons in one acre-inch
+
+// Irrigation systems differ here only in application efficiency and in the units
+// people naturally think in. The delivery physics (applyDays) is identical for all
+// of them: a pivot revolution and an SDI zone cycle are both "time to put depth d
+// on area A at flow Q". `eff` is a starting point — the field's own value wins.
+const SYSTEMS = {
+  pivotImpact: {name:'Center pivot — impact sprinkler', eff:75, unit:'gpm'},
+  pivotLepa:   {name:'Center pivot — LEPA/LESA/drop',   eff:90, unit:'gpm'},
+  sdi:         {name:'Subsurface drip (SDI)',           eff:92, unit:'inday'},
+  drip:        {name:'Surface drip',                    eff:90, unit:'inday'},
+  furrow:      {name:'Furrow / surface',                eff:60, unit:'gpm'},
+  other:       {name:'Other',                           eff:85, unit:'gpm'},
+};
 
 // ════════════════════════════════════════════════════════════
 //  SOIL TEXTURE RASTER — CONUS dominant soil texture, ~1km grid
@@ -770,16 +894,51 @@ function getKc(i,kc){ const {ki,km,ke,li,ld,lm,ll}=kc, d=Math.min(i,li+ld+lm+ll-
 function getZ(i,crop,Zm,dyn){ if(!dyn) return Zm; const [Li,Ld]=crop.stages, Zi=8;
   if(i<Li) return Zi; if(i<Li+Ld) return Zi+((i-Li)/Ld)*(Zm-Zi); return Zm; }
 function runoff(P,CN){ const S=1000/CN-10, Ia=.2*S; return P<=Ia?0:(P-Ia)*(P-Ia)/(P-Ia+S); }
-function pivDays(A,d,Q,E){ return (A*d*27154)/(Q*E*60*24); }
+
+// Days for a system to deliver net depth `d` over area `A` at gross flow `Q` (gpm)
+// and efficiency `E`. System-agnostic: a pivot pass, an SDI zone cycle, and a furrow
+// set are all the same calculation.
+function applyDays(A,d,Q,E){ return (A*d*GAL_PER_AC_IN)/(Q*E*60*24); }
+
+// Gross system flow in gpm. Fields configured in in/day (typical for SDI/drip) are
+// converted here so there is exactly one delivery formula in the model.
+// Falls back to legacy `pumpGPM` records saved before units existed.
+function grossGpm(f){
+  const v = f.capValue ?? f.pumpGPM ?? 800;
+  if((f.capUnit||'gpm')==='inday') return (v*(f.areaAc||1)*GAL_PER_AC_IN)/(60*24);
+  return v;
+}
+
+// The depth a strategy wants to apply, given the current deficit. Single source of
+// truth — the daily loop and the recommendation banner both call this.
+function plannedDepth(mode, need, fixedD){
+  if(mode==='refill') return need;
+  if(mode==='fixed' || mode==='interval') return fixedD;
+  return Math.min(need, fixedD);   // hybrid
+}
+
+// True if any of the next `days` days is forecast at/above `probThr`. Historical days
+// carry no probability, so this only ever holds back irrigation near/after today —
+// we don't pretend to know what the forecast said last month.
+function rainAheadOf(wx, date, days, probThr){
+  for(let k=1;k<=days;k++){
+    const d2=new Date(date); d2.setDate(d2.getDate()+k);
+    const w2=wx[d2.toISOString().split('T')[0]];
+    if(w2 && (w2.prob??0)>=probThr) return true;
+  }
+  return false;
+}
 
 // Simulate one field. Returns {rows, sim{...status/reco/totals}}
 function simulateField(f, wx){
   const crop=CROPS[f.crop], soil=SOILS[f.soil], kc=kcOf(f);
   const Zm=f.rootDepth||crop.root, dyn=(f.rdMode!=='constant');
   const initPct=(f.initWater??75)/100;
-  const area=f.areaAc||1, gpm=f.pumpGPM||800, eff=(f.eff??85)/100;
+  const area=f.areaAc||1, gpm=grossGpm(f), eff=(f.eff??85)/100;
   const fixedD=f.fixedDepth??1.0, irrMode=f.irrMode||'hybrid';
   const mad=(f.mad??50)/100, estabDays=f.estabDays??14;
+  const intervalDays=Math.max(1, f.intervalDays??7);
+  const skipRain=!!f.skipRain, skipProb=f.skipRainProb??60, skipDays=Math.max(1,Math.min(7,f.skipRainDays??2));
   const allocEnabled=(f.allocLimit>0)&&irrMode!=='none';
   const allocLimit=allocEnabled?f.allocLimit:Infinity;
 
@@ -792,7 +951,7 @@ function simulateField(f, wx){
   const rows=[];
   const Z0=getZ(0,crop,Zm,dyn);
   let S=(soil.WP*Z0/100)+initPct*(soil.FC*Z0/100-soil.WP*Z0/100);
-  let busy=false, busyEnd=-1, totalNet=0, allocUsed=0;
+  let busy=false, busyEnd=-1, totalNet=0, allocUsed=0, lastStart=-Infinity;
 
   for(let i=0;i<nDays;i++){
     const date=new Date(t0); date.setDate(date.getDate()+i);
@@ -807,14 +966,14 @@ function simulateField(f, wx){
     const FC_in=soil.FC*Zcur/100, WP_in=soil.WP*Zcur/100, PAW=FC_in-WP_in, Thr=WP_in+(1-mad)*PAW;
 
     const w=wx[ds];
-    let ETo, precip, mesoP=0;
+    let ETo, precip, mesoP=0, prob=null;
     if(!fut && w){ ETo=w.eto??0.15; mesoP=w.p;
       const ov=rainOverrides[f.id]?.[ds];
       precip = ov !== undefined ? ov : mesoP;
     }
     else if(fut && w){ ETo=w.eto??0.15;
       const ahead=Math.floor((date-today)/86400000);
-      mesoP=w.p;
+      mesoP=w.p; prob=w.prob??null;
       precip=(ahead<=PRECIP_FORECAST_DAYS && (w.prob??0)>=PRECIP_PROB_THRESHOLD)?mesoP:0;
     } else { ETo=0.15; precip=0; }
 
@@ -827,31 +986,44 @@ function simulateField(f, wx){
     const FAWpre=Math.max(0,Math.min(1,(S-WP_in)/(PAW+1e-9)));
     let irr=0, tag='grn', st='OK';
     const allocLeft=allocLimit-allocUsed, allocOut=allocEnabled&&allocLeft<=0.001;
+    const belowMad = FAWpre<(1-mad);
 
     if(irrMode!=='none'){
-      if(!busy && i>=estabDays && FAWpre<(1-mad)){
+      // What makes irrigation due differs by strategy; everything after that is shared.
+      const due = irrMode==='interval'
+        ? (i-lastStart)>=intervalDays
+        : belowMad;
+      const holdForRain = skipRain && rainAheadOf(wx,date,skipDays,skipProb);
+
+      if(!busy && i>=estabDays && due){
         if(allocOut){ st='Alloc. out'; tag='red'; }
+        else if(holdForRain){ st='Rain hold'; tag='blu'; }
         else {
           const need=Math.max(0,FC_in-S);
-          irr = irrMode==='refill'?need : irrMode==='fixed'?fixedD : Math.min(need,fixedD);
+          irr = plannedDepth(irrMode, need, fixedD);
           if(allocEnabled) irr=Math.min(irr,allocLeft);
-          if(irr>0){ const pt=pivDays(area,irr,gpm,eff); busy=true; busyEnd=i+Math.ceil(pt);
-            totalNet+=irr; allocUsed+=irr; }
+          if(irr>0){
+            // Busy time follows the depth actually applied, so a hybrid partial fill
+            // frees the system sooner than a full fixed pass would.
+            const pt=applyDays(area,irr,gpm,eff);
+            busy=true; busyEnd=i+Math.ceil(pt); lastStart=i;
+            totalNet+=irr; allocUsed+=irr;
+          }
           st='Irrigate'; tag='red';
         }
       } else if(busy){
-        if(FAWpre<(1-mad)){ st='Stress'; tag='amb'; } else { st=`Running ${busyEnd-i}d`; tag='blu'; }
-      } else if(FAWpre<(1-mad)){ st='Stress'; tag='amb'; }
+        if(belowMad){ st='Stress'; tag='amb'; } else { st=`Running ${busyEnd-i}d`; tag='blu'; }
+      } else if(belowMad){ st='Stress'; tag='amb'; }
       else { st='OK'; tag='grn'; }
     } else {
-      if(FAWpre<(1-mad)){ st='Stress'; tag='amb'; } else { st='OK'; tag='grn'; }
+      if(belowMad){ st='Stress'; tag='amb'; } else { st='OK'; tag='grn'; }
     }
 
     S=Math.min(FC_in,Math.max(0,S+(precip-R)+irr-ETc));
     const FAW=Math.max(0,Math.min(1,(S-WP_in)/(PAW+1e-9)));
     if(st==='OK' && FAW<(1-mad)){ st='EOD<MAD'; tag='amb'; }
 
-    rows.push({i,ds,fut,precip,mesoP,ETo,Kc,ETc,R,irr,FC_in,WP_in,PAW,Thr_in:Thr,S,FAW,st,tag,eff});
+    rows.push({i,ds,fut,precip,mesoP,prob,ETo,Kc,ETc,R,irr,FC_in,WP_in,PAW,Thr_in:Thr,S,FAW,st,tag,eff});
   }
 
   // ── classify field-level status ──
@@ -869,12 +1041,28 @@ function simulateField(f, wx){
     if(tRow.FAW<madFAW){ level='red'; label='Water stress'; }
     else { const fi=fut.findIndex(r=>r.FAW<madFAW);
       if(fi>=0){ level='amb'; label='Stress ahead'; daysToMad=daysAhead(fut[fi].ds,today); } }
-  } else {
+  }
+  else if(irrMode==='interval'){
+    // Calendar-driven: MAD no longer decides *when*, but still reports whether the
+    // chosen interval is actually keeping up.
+    if(tRow.st==='Alloc. out'){ level='red'; label='Scheduled · allocation out'; }
+    else if(tRow.st==='Rain hold'){ level='grn'; label='Rain hold — watering skipped'; }
+    else if(tRow.irr>0){ level='red'; label='Scheduled watering today'; recNet=tRow.irr; }
+    else if(tRow.FAW<madFAW){ level='amb'; label='Below MAD between waterings'; daysToMad=0; }
+    else {
+      const mi=fut.findIndex(r=>r.FAW<madFAW);
+      const ni=fut.findIndex(r=>r.irr>0);
+      if(mi>=0){ level='amb'; label='Approaching MAD'; daysToMad=daysAhead(fut[mi].ds,today); }
+      else if(ni>=0){ level='grn'; label=`Next watering in ${daysAhead(fut[ni].ds,today)}d`; }
+    }
+  }
+  else {
     if(tRow.FAW<=madFAW){
       if(allocEnabled && allocLeft<=0.001){ level='red'; label='Below MAD · allocation out'; }
+      else if(tRow.st==='Rain hold'){ level='grn'; label='Rain hold — irrigation skipped'; }
       else { level='red'; label='Irrigate now';
         const need=Math.max(0,tRow.FC_in-tRow.S);
-        recNet = irrMode==='refill'?need : irrMode==='fixed'?fixedD : Math.min(need,fixedD);
+        recNet = plannedDepth(irrMode, need, fixedD);
         if(allocEnabled) recNet=Math.min(recNet,allocLeft);
         recNet=Math.max(0,recNet);
       }
@@ -889,10 +1077,22 @@ function simulateField(f, wx){
   const stressDays=rows.filter(r=>!r.fut && (r.tag==='amb'&&(r.st==='Stress'||r.st==='EOD<MAD'||r.st==='Alloc. out'))).length;
   const progress=Math.min(100, Math.round(((today-t0)/86400000)/kcTotal(kc)*100));
 
+  // Rain outlook over the window we actually trust (PRECIP_FORECAST_DAYS).
+  // Counted by forecast probability, not by amount, so a likely-but-light day
+  // still registers. rainSoonDays is null only when there is no forecast at all.
+  const rainWin = fut.filter(r=>daysAhead(r.ds,today)<=PRECIP_FORECAST_DAYS);
+  const rainDays = rainWin.filter(r=>(r.prob??0)>=PRECIP_PROB_THRESHOLD);
+  const rainSoonCount = rainDays.length;
+  const rainSoonIn = rainDays.reduce((a,r)=>a+r.precip,0);
+  const rainSoonDays = rainSoonCount ? daysAhead(rainDays[0].ds, today) : null;
+  const rainSoonMaxProb = rainSoonCount ? Math.max(...rainDays.map(r=>r.prob??0)) : null;
+  const hasForecast = rainWin.length>0;
+
   return { rows, sim:{
     level,label,daysToMad,recNet, recGross:eff>0?recNet/eff:recNet,
     todayFAW: tRow?tRow.FAW:null, mad:mad*100, irrMode,
     netIrr:totalNet, totP, totET, stressDays, progress,
+    rainSoonCount, rainSoonIn, rainSoonDays, rainSoonMaxProb, hasForecast,
     allocLeft: isFinite(allocLeft)?allocLeft:null,
     area, crop:crop.name, soil:soil.name
   }};
@@ -906,7 +1106,7 @@ const LEVEL_COLOR = {red:'#dc2626', amb:'#d97706', grn:'#16a34a', gray:'#64748b'
 
 function initMap(){
   const set=loadJSON(LS_SET,{});
-  const center=set.center||[39.1836,-96.5717], zoom=set.zoom||12;
+  const center=set.center||[38.5,-98.0], zoom=set.zoom||7;
   state.map=L.map('map',{zoomControl:true}).setView(center,zoom);
   const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     {attribution:'Imagery © Esri',maxZoom:19}).addTo(state.map);
@@ -1061,7 +1261,7 @@ function renderChips(){
   const c={red:0,amb:0,grn:0,gray:0};
   state.fields.forEach(f=>{ const l=f._sim?f._sim.level:'gray'; c[l]++; });
   document.getElementById('chips').innerHTML =
-    `<span class="chip red ${c.red?'':'zero'}"><span class="n">${c.red}</span> irrigate now</span>`+
+    `<span class="chip red ${c.red?'':'zero'}"><span class="n">${c.red}</span> irrigate</span>`+
     `<span class="chip amb ${c.amb?'':'zero'}"><span class="n">${c.amb}</span> watch</span>`+
     `<span class="chip grn ${c.grn?'':'zero'}"><span class="n">${c.grn}</span> ok</span>`;
 }
@@ -1095,12 +1295,19 @@ function renderList(){
     let statusTxt = s?s.label:'Not run';
     if(s&&s.level==='red'&&s.recNet>0) statusTxt=`Irrigate · ${s.recNet.toFixed(2)}″ net`;
     else if(s&&s.level==='amb'&&s.daysToMad!=null) statusTxt=`Approaching MAD in ${s.daysToMad}d`;
+    const rainTxt = !s ? ''
+      : !s.hasForecast ? 'No forecast data'
+      : s.rainSoonCount
+        ? `🌧 ${s.rainSoonCount} day${s.rainSoonCount>1?'s':''} ≥${PRECIP_PROB_THRESHOLD}% · ${s.rainSoonIn.toFixed(2)}″ in ${PRECIP_FORECAST_DAYS}d`
+        : `No rain ≥${PRECIP_PROB_THRESHOLD}% in next ${PRECIP_FORECAST_DAYS}d`;
+    const rainCls = s&&s.rainSoonCount ? 'fr-rain on' : 'fr-rain';
     return `<div class="field-row ${f.id===state.activeId?'active':''}" onclick="openDetail('${f.id}')">
       <div class="flag ${lvl}"></div>
       <div class="fr-main">
         <div class="fr-name">${esc(f.name)}</div>
         <div class="fr-sub">${CROPS[f.crop].name} · ${f.areaAc?f.areaAc.toFixed(1):'?'} ac</div>
         <div class="fr-sub">Planted ${fmtPlantDate(f.plantingDate)} · ${taw}</div>
+        ${s?`<div class="${rainCls}">${rainTxt}</div>`:''}
         <div class="fr-status ${lvl}">${statusTxt}</div>
       </div>
       <div class="fr-actions" onclick="event.stopPropagation()">
@@ -1119,6 +1326,7 @@ function zoomTo(id){ const p=state.layers[id]; if(p) state.map.fitBounds(p.getBo
 function populateSelects(){
   document.getElementById('fCrop').innerHTML=Object.entries(CROPS).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');
   document.getElementById('fSoil').innerHTML=Object.entries(SOILS).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');
+  document.getElementById('fSystem').innerHTML=Object.entries(SYSTEMS).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');
 }
 let formMad=50, formEditId=null;
 function setMadSeg(v){ formMad=v;
@@ -1258,34 +1466,80 @@ function onFormCrop(){
 }
 function onFormMode(){
   const m=document.getElementById('fMode').value;
+  const isInterval = m==='interval';
   document.getElementById('madWrap').style.display = m==='none'?'none':'';
+  // In interval mode MAD no longer triggers anything — it only flags that the
+  // chosen schedule isn't keeping up, so the label says so.
+  document.getElementById('madLbl').textContent = isInterval?'Stress warning below':'MAD trigger';
   document.getElementById('depthWrap').style.display = (m==='refill'||m==='none')?'none':'';
   document.getElementById('depthLbl').textContent = m==='hybrid'?'Max application depth (in)':'Application depth (in)';
+  document.getElementById('intervalWrap').style.display = isInterval?'':'none';
+  document.getElementById('skipRainWrap').style.display = m==='none'?'none':'';
   const notes={
     hybrid:'When soil hits the MAD trigger, apply the smaller of (refill-to-field-capacity) or (max application depth). Avoids over-applying on a partial deficit.',
     fixed:'Apply a fixed depth every time the MAD trigger is reached.',
     refill:'Refill the root zone back to field capacity each time the MAD trigger is reached.',
+    interval:'Apply a fixed depth on a set calendar schedule, regardless of soil water. Anything above field capacity is lost to deep percolation. MAD is still reported so you can tell if the interval is too long.',
     none:'Dryland — no irrigation applied. Field is tracked for stress only.'
   };
   document.getElementById('stratNote').textContent=notes[m]||'';
+  updateRevTime();
 }
-function updateRevTime(){
-  const modal=document.getElementById('formModal');
-  let areaAc=null;
-  try{ const p=JSON.parse(modal.dataset.poly||'null'); if(p) areaAc=p.areaAc||null; }catch(e){}
-  if(!areaAc){
-    const id=modal.dataset.fieldId;
-    if(id){ const f=state.fields.find(x=>x.id===id); if(f) areaAc=f.areaAc||null; }
+
+// Picking a system presets its typical efficiency and the units that system's
+// operators usually think in. Both stay editable.
+function onFormSystem(){
+  const s=SYSTEMS[document.getElementById('fSystem').value];
+  if(!s) return;
+  document.getElementById('fEff').value=s.eff;
+  const unitSel=document.getElementById('fCapUnit');
+  if(unitSel.value!==s.unit){
+    unitSel.value=s.unit;
+    document.getElementById('fCap').value = s.unit==='inday' ? 0.25 : 800;
   }
+  updateRevTime();
+}
+
+function onFormSkipRain(){
+  const on=document.getElementById('fSkipRain').checked;
+  document.getElementById('skipRainOpts').style.display=on?'flex':'none';
+}
+
+function formAreaAc(){
+  const modal=document.getElementById('formModal');
+  try{ const p=JSON.parse(modal.dataset.poly||'null'); if(p&&p.areaAc) return p.areaAc; }catch(e){}
+  const id=modal.dataset.fieldId;
+  if(id){ const f=state.fields.find(x=>x.id===id); if(f&&f.areaAc) return f.areaAc; }
+  return null;
+}
+
+function updateRevTime(){
   const hint=document.getElementById('revTimeHint');
+  const areaAc=formAreaAc();
   if(!areaAc){ hint.style.display='none'; return; }
-  const gpm=parseFloat(document.getElementById('fPump').value)||800;
+  const mode=document.getElementById('fMode').value;
+  if(mode==='none'){ hint.style.display='none'; return; }
+
   const eff=(parseFloat(document.getElementById('fEff').value)||85)/100;
-  const depth=parseFloat(document.getElementById('fDepth').value)||1.0;
-  const days=pivDays(areaAc, depth, gpm, eff);
+  const unit=document.getElementById('fCapUnit').value;
+  const capVal=parseFloat(document.getElementById('fCap').value);
+  if(!(capVal>0)){ hint.style.display='none'; return; }
+  // Reuse the model's own conversion + delivery formula rather than restating it.
+  const gpm=grossGpm({capValue:capVal, capUnit:unit, areaAc});
+  const depth=mode==='refill'
+    ? null
+    : (parseFloat(document.getElementById('fDepth').value)||1.0);
+
+  if(depth===null){
+    hint.textContent=`Refill mode — pass length varies with the deficit at each trigger.`;
+    hint.style.display='block';
+    return;
+  }
+  const days=applyDays(areaAc, depth, gpm, eff);
   const hrs=days*24;
   const dispTime=hrs<24?`${hrs.toFixed(1)} hr`:`${days.toFixed(1)} days`;
-  hint.textContent=`~${dispTime} to apply ${depth}″ across ${areaAc.toFixed(1)} ac`;
+  const capTxt=unit==='inday'?`${capVal} in/day`:`${Math.round(gpm)} gpm`;
+  hint.textContent=`${capTxt} · ${areaAc.toFixed(1)} ac → ~${dispTime} to apply ${depth}″. Soonest repeat: every ${days<1?'<1':days.toFixed(1)} days.`;
   hint.style.display='block';
 }
 
@@ -1301,13 +1555,17 @@ function openForm(id, poly){
   formEditId = id||null;
   document.getElementById('formTitle').textContent = id?'Edit field':'New field';
   const d = state.defaults || { crop:'corn', soil:'siltLoam', irrMode:'hybrid', mad:50,
-    fixedDepth:1.0, eff:85, estabDays:14, initWater:75, rdMode:'dynamic', pumpGPM:800, allocLimit:0 };
+    fixedDepth:1.0, eff:85, estabDays:14, initWater:75, rdMode:'dynamic',
+    system:'pivotLepa', capValue:800, capUnit:'gpm', allocLimit:0,
+    intervalDays:7, skipRain:false, skipRainProb:60, skipRainDays:2 };
 
   let f, autoSoil=null;
   if(id){ f=state.fields.find(x=>x.id===id); }
   else { f={ name:`Field ${state.fields.length+1}`, crop:d.crop, soil:d.soil, irrMode:d.irrMode,
     mad:d.mad, fixedDepth:d.fixedDepth, eff:d.eff, estabDays:d.estabDays, initWater:d.initWater,
-    rdMode:d.rdMode, pumpGPM:d.pumpGPM, allocLimit:d.allocLimit, rootDepth:CROPS[d.crop].root,
+    rdMode:d.rdMode, system:d.system, capValue:d.capValue, capUnit:d.capUnit,
+    allocLimit:d.allocLimit, intervalDays:d.intervalDays, skipRain:d.skipRain,
+    skipRainProb:d.skipRainProb, skipRainDays:d.skipRainDays, rootDepth:CROPS[d.crop].root,
     plantingDate:`${new Date().getFullYear()}-${CROPS[d.crop].plantMonthDay}` };
     if(poly){ f.polygon=poly.latlngs; f.centroid=poly.centroid; f.areaAc=poly.areaAc;
       autoSoil = lookupSoilTexture(poly.centroid.lat, poly.centroid.lng);
@@ -1325,9 +1583,17 @@ function openForm(id, poly){
   document.getElementById('fInit').value=f.initWater;
   document.getElementById('fRoot').value=f.rootDepth||CROPS[f.crop].root;
   document.getElementById('fRd').value=f.rdMode;
-  document.getElementById('fPump').value=f.pumpGPM;
+  document.getElementById('fSystem').value=SYSTEMS[f.system]?f.system:'other';
+  // Records saved before units existed carry pumpGPM only.
+  document.getElementById('fCap').value = f.capValue ?? f.pumpGPM ?? 800;
+  document.getElementById('fCapUnit').value = f.capUnit || 'gpm';
+  document.getElementById('fInterval').value=f.intervalDays??7;
+  document.getElementById('fSkipRain').checked=!!f.skipRain;
+  document.getElementById('fSkipProb').value=f.skipRainProb??60;
+  document.getElementById('fSkipDays').value=f.skipRainDays??2;
   document.getElementById('fAlloc').value=f.allocLimit>0?f.allocLimit:'';
   setMadSeg(f.mad||50);
+  onFormSkipRain();
   onFormMode();
   formKc = f.kc ? {...f.kc} : cropDefaultKc(f.crop);
   // stash polygon on the form for a new field
@@ -1352,18 +1618,25 @@ function saveForm(){
     showToast('Planting date is in the future — no observed weather to simulate yet'); return;
   }
   const allocRaw=parseFloat(document.getElementById('fAlloc').value);
+  const capUnit=document.getElementById('fCapUnit').value;
   const rec = {
     name, crop, plantingDate,
     soil: document.getElementById('fSoil').value,
     irrMode: document.getElementById('fMode').value,
     mad: formMad,
     fixedDepth: parseFloat(document.getElementById('fDepth').value)||1.0,
-    eff: clampNum('fEff',50,100,85),
+    eff: clampNum('fEff',30,100,85),
     estabDays: clampNum('fEstab',0,60,14),
     initWater: clampNum('fInit',0,100,75),
     rootDepth: clampNum('fRoot',8,120,CROPS[crop].root),
     rdMode: document.getElementById('fRd').value,
-    pumpGPM: clampNum('fPump',1,99999,800),
+    system: document.getElementById('fSystem').value,
+    capUnit,
+    capValue: clampNum('fCap', 0.001, 999999, capUnit==='inday'?0.25:800),
+    intervalDays: clampNum('fInterval',1,60,7),
+    skipRain: document.getElementById('fSkipRain').checked,
+    skipRainProb: clampNum('fSkipProb',10,100,60),
+    skipRainDays: clampNum('fSkipDays',1,7,2),
     allocLimit: (!isNaN(allocRaw)&&allocRaw>0)?allocRaw:0,
     kc: {ki:formKc.ki, km:formKc.km, ke:formKc.ke, li:formKc.li, ld:formKc.ld, lm:formKc.lm, ll:formKc.ll},
   };
@@ -1385,7 +1658,9 @@ function saveForm(){
   // remember these as defaults for the next new field (low-friction repeat entry)
   state.defaults = { crop:rec.crop, soil:rec.soil, irrMode:rec.irrMode, mad:rec.mad,
     fixedDepth:rec.fixedDepth, eff:rec.eff, estabDays:rec.estabDays, initWater:rec.initWater,
-    rdMode:rec.rdMode, pumpGPM:rec.pumpGPM, allocLimit:rec.allocLimit };
+    rdMode:rec.rdMode, system:rec.system, capValue:rec.capValue, capUnit:rec.capUnit,
+    allocLimit:rec.allocLimit, intervalDays:rec.intervalDays, skipRain:rec.skipRain,
+    skipRainProb:rec.skipRainProb, skipRainDays:rec.skipRainDays };
 
   saveFields(); saveSettings();
   closeForm();
@@ -1477,11 +1752,18 @@ function openDetail(id, showAll){
   }
   // reco banner
   let recoTxt;
+  const isInterval = s.irrMode==='interval';
+  // In interval mode MAD didn't cause the irrigation — the calendar did — so the
+  // wording must not claim a MAD trigger.
   if(s.level==='red' && s.recNet>0)
-    recoTxt=`💧 Irrigate ${s.recNet.toFixed(2)}″ net (${s.recGross.toFixed(2)}″ gross) — soil at ${Math.round(s.todayFAW*100)}% TAW, below the ${s.mad}% MAD trigger.`;
+    recoTxt = isInterval
+      ? `💧 Scheduled watering: ${s.recNet.toFixed(2)}″ net (${s.recGross.toFixed(2)}″ gross) — soil at ${Math.round(s.todayFAW*100)}% TAW.`
+      : `💧 Irrigate ${s.recNet.toFixed(2)}″ net (${s.recGross.toFixed(2)}″ gross) — soil at ${Math.round(s.todayFAW*100)}% TAW, below the ${s.mad}% MAD trigger.`;
   else if(s.level==='red') recoTxt=`⛔ ${s.label} — soil at ${Math.round(s.todayFAW*100)}% TAW.`;
-  else if(s.level==='amb') recoTxt=`⚠ ${s.label}${s.daysToMad!=null?` in ~${s.daysToMad} day${s.daysToMad!==1?'s':''}`:''} — soil at ${Math.round(s.todayFAW*100)}% TAW.`;
-  else if(s.level==='grn') recoTxt=`✓ Field is fine — ${Math.round(s.todayFAW*100)}% TAW, above the ${s.mad}% MAD trigger.`;
+  else if(s.level==='amb') recoTxt=`⚠ ${s.label}${s.daysToMad?` in ~${s.daysToMad} day${s.daysToMad!==1?'s':''}`:''} — soil at ${Math.round(s.todayFAW*100)}% TAW.`;
+  else if(s.level==='grn') recoTxt = isInterval
+      ? `✓ ${s.label} — soil at ${Math.round(s.todayFAW*100)}% TAW.`
+      : `✓ Field is fine — ${Math.round(s.todayFAW*100)}% TAW, above the ${s.mad}% MAD trigger.`;
   else recoTxt=s.label;
   const reco=document.getElementById('detailReco');
   reco.className='reco '+s.level; reco.innerHTML=recoTxt;
@@ -1534,7 +1816,8 @@ function deleteActive(){
 function tagTooltip(st){
   if(st==='OK') return 'Soil is above the MAD trigger — no action needed.';
   if(st==='Irrigate') return 'Soil is at/below the MAD trigger — irrigation applied (or due) today.';
-  if(st.startsWith('Running')) return 'Pivot is mid-revolution; days remaining until this pass completes.';
+  if(st.startsWith('Running')) return 'System is mid-application; days remaining until this pass completes.';
+  if(st==='Rain hold') return 'Irrigation was due but is being held back because rain is likely within your set window.';
   if(st==='Stress') return 'Soil water is below the MAD trigger between irrigations.';
   if(st==='EOD<MAD') return 'Soil started the day OK but crop water use dropped it below the MAD trigger by end of day.';
   if(st==='Alloc. out') return 'Soil is dry but the seasonal water allocation has been used up.';
@@ -1668,6 +1951,8 @@ function buildDigest(){
       name:f.name, crop:CROPS[f.crop].name, area_ac:f.areaAc, planting_date:f.plantingDate,
       centroid:{lat:+f.centroid.lat.toFixed(4),lng:+f.centroid.lng.toFixed(4)},
       strategy:f.irrMode, mad_pct:f.mad,
+      system: SYSTEMS[f.system]?SYSTEMS[f.system].name:'unspecified',
+      interval_days: f.irrMode==='interval' ? (f.intervalDays??7) : null,
       status: s?s.level:'gray',
       status_label: s?s.label:'not run',
       taw_today_pct: s&&s.todayFAW!=null?Math.round(s.todayFAW*100):null,
@@ -1875,32 +2160,28 @@ function commitImport(fresh, dup, overwrite, importedRainOverrides){
 }
 
 // ════════════════════════════════════════════════════════════
-//  GEOCODE (map centering helper)
-// ════════════════════════════════════════════════════════════
-async function doGeocode(){
-  const q=document.getElementById('placeSearch').value.trim(); if(!q) return;
-  const box=document.getElementById('geoResults'); box.innerHTML='Searching…';
-  try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`);
-    const d=await r.json();
-    if(!d.length){ box.innerHTML='<span class="hint">No matches.</span>'; return; }
-    box.innerHTML=d.map(x=>`<div class="mini" style="display:block;margin-bottom:5px;padding:7px 10px;cursor:pointer;"
-      onclick="state.map.setView([${x.lat},${x.lon}],13);document.getElementById('locateModal').style.display='none';">${esc(x.display_name)}</div>`).join('');
-  }catch(e){ box.innerHTML='<span class="hint">Search unavailable.</span>'; }
-}
-
-// ════════════════════════════════════════════════════════════
 //  UTIL / THEME / INIT
 // ════════════════════════════════════════════════════════════
+const ABOUT_SEEN_KEY='irr.aboutSeen.v1';
+function openAbout(){ document.getElementById('aboutModal').style.display='flex'; }
+function closeAbout(){ document.getElementById('aboutModal').style.display='none'; localStorage.setItem(ABOUT_SEEN_KEY,'1'); }
+
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 let _tt;
 function showToast(m,ms=3000){ const el=document.getElementById('toast'); el.textContent=m; el.classList.add('show');
   clearTimeout(_tt); _tt=setTimeout(()=>el.classList.remove('show'),ms); }
 
+function toggleMenu(){ document.getElementById('menuDrop').classList.toggle('open'); }
+function closeMenu(){ document.getElementById('menuDrop').classList.remove('open'); }
+document.addEventListener('click', e=>{
+  if(!document.getElementById('menuWrap').contains(e.target)) closeMenu();
+});
+
 function applyTheme(dark){
   document.documentElement.setAttribute('data-theme',dark?'dark':'light');
-  document.getElementById('themeBtn').textContent=dark?'☀':'🌙';
+  const item=document.getElementById('themeItem');
+  if(item) item.textContent=(dark?'☀':'🌙')+' Toggle theme';
   if(state.activeId && document.getElementById('detailModal').style.display==='flex'){
     const f=state.fields.find(x=>x.id===state.activeId); if(f&&f._rows) drawDetailCharts(f);
   }
@@ -1947,7 +2228,15 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     if(!state.weather || (Date.now()-state.weather.fetchedAt)>WX_MAX_AGE_MS) runAll(false);
   } else {
     renderList();
-    document.getElementById('locateModal').style.display='flex';
+    // First visit: try to center on the user's location silently.
+    // On deny or timeout, the map stays on the Kansas default.
+    if(!set.center && navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        pos=>state.map.setView([pos.coords.latitude, pos.coords.longitude], 12),
+        ()=>{},  // denied or unavailable — stay on Kansas default
+        {timeout:6000, maximumAge:300000}
+      );
+    }
   }
 });
 </script>
