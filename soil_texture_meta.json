@@ -1,0 +1,26 @@
+{
+  "description": "CONUS dominant soil texture class (USDA 12-class system). Pixel value is read from the Red channel after drawing soil_texture.png to a canvas and calling getImageData() — the PNG is an 8-bit indexed image with an identity grayscale palette (palette[v] = [v,v,v]), so the decoded R channel equals the original class value exactly. Verified via round-trip: decoded array matches the source GeoTIFF pixel-for-pixel.",
+  "source_file": "soil_texture.tif (GEE export, uploaded by user)",
+  "width": 6454,
+  "height": 2783,
+  "bounds": { "west": -124.8568413397723, "south": 24.389259963845006, "east": -66.87957290269838, "north": 49.38937432089129 },
+  "resolution_deg": 0.008983152841195215,
+  "crs": "EPSG:4326",
+  "nodata_value": 0,
+
+  "_classes_UNCONFIRMED": {
+    "note": "This is my best guess at the class order, matching the common OpenLandMap / GEE 'Soil texture class (USDA system)' convention. PLEASE CONFIRM against your GEE source asset before this is wired into the app — an incorrect order would silently mis-map FC/WP values nationwide.",
+    "1": "Clay",
+    "2": "Silty Clay",
+    "3": "Sandy Clay",
+    "4": "Clay Loam",
+    "5": "Silty Clay Loam",
+    "6": "Sandy Clay Loam",
+    "7": "Loam",
+    "8": "Silty Loam",
+    "9": "Sandy Loam",
+    "10": "Silt",
+    "11": "Loamy Sand",
+    "12": "Sand"
+  }
+}
