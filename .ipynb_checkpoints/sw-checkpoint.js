@@ -1,4 +1,4 @@
-const CACHE = 'drip-v1.0.0';
+const CACHE = 'drip-v1.0.1';
 
 // Static assets to precache on install
 const PRECACHE = [

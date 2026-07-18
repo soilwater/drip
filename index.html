@@ -19,7 +19,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Irrigation">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -27,22 +27,24 @@
 :root{
   --mw:1320px;
   --g:#5816a3; --g-hov:#4a12a0; --g-soft:rgba(88,22,163,.10);
-  --glt:#f3e8ff; --gbdr:#ddd6fe;
+  --gbdr:#ddd6fe;
   --red:#dc2626; --amb:#d97706; --grn:#16a34a; --teal:#0d9488; --tealt:rgba(13,148,136,.09);
   --bdr:#e2e8f0; --txt:#0f172a; --mut:#64748b;
   --sllt:#f8fafc; --shd:0 1px 3px rgba(0,0,0,.08);
   --bg-page:#eef2f7; --bg-card:#ffffff; --bg-input:#ffffff; --bg-header:#ffffff;
   --redsoft:rgba(220,38,38,.10); --ambsoft:rgba(217,119,6,.10); --grnsoft:rgba(22,163,74,.10);
+  --blu:#2563eb; --blusoft:rgba(37,99,235,.10);
   --kc-curve:#16a34a; --kc-label:#16a34a;
 }
 [data-theme="dark"]{
   --g:#a78bfa; --g-hov:#c4b5fd; --g-soft:rgba(167,139,250,.15);
-  --glt:#2e1a4a; --gbdr:#4c3380;
+  --gbdr:#4c3380;
   --red:#f87171; --amb:#fbbf24; --grn:#4ade80; --teal:#2dd4bf; --tealt:rgba(45,212,191,.10);
   --bdr:#334155; --txt:#e2e8f0; --mut:#94a3b8;
   --sllt:#1e293b; --shd:0 1px 3px rgba(0,0,0,.35);
   --bg-page:#0f172a; --bg-card:#1e293b; --bg-input:#0f172a; --bg-header:#1e293b;
   --redsoft:rgba(248,113,113,.14); --ambsoft:rgba(251,191,36,.14); --grnsoft:rgba(74,222,128,.14);
+  --blu:#60a5fa; --blusoft:rgba(96,165,250,.16);
   --kc-curve:#4a12a0; --kc-label:#e2dee7;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -53,11 +55,7 @@ body,header,.card,select,input,button{transition:background .2s,color .2s,border
 /* ── Header ── */
 header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1px solid var(--bdr);position:relative;z-index:1001;}
 .header-inner{max-width:var(--mw);margin:0 auto;padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:nowrap;}
-.brand{font-size:16px;font-weight:700;color:var(--txt);letter-spacing:-.01em;display:flex;align-items:center;gap:9px;}
-.brand .dot{width:11px;height:11px;border-radius:50%;background:var(--g);}
-.brand small{font-weight:500;color:var(--mut);font-size:12px;}
-/* Full wordmark on wide screens; compact pivot mark takes over on narrow ones,
-   since the wordmark alone is ~355px wide at 40px tall and swamps a phone header. */
+/* Full wordmark on wide screens; compact pivot mark on narrow ones. */
 .header-logo,.header-logo-dark{display:block;height:40px;width:auto;flex-shrink:0;}
 .header-logo-dark{display:none;}
 [data-theme="dark"] .header-logo{display:none;}
@@ -80,15 +78,18 @@ header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1
 .chips{display:flex;gap:5px;flex-wrap:nowrap;min-width:0;}
 .chip{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;padding:4px 9px;border-radius:20px;border:1.5px solid transparent;background:var(--sllt);color:var(--mut);white-space:nowrap;}
 .chip .n{font-weight:800;font-size:13px;color:var(--txt);}
-/* A status chip lights up in its colour only while it holds fields; an empty chip
-   (.zero) dims to a neutral outline so "irrigate" reads as a real alert. */
+/* Chips dim to a neutral outline (.zero) when empty so a lit "irrigate" reads as a real alert. */
 .chip.red{background:var(--redsoft);color:var(--red);} .chip.red .n{color:var(--red);}
 .chip.amb{background:var(--ambsoft);color:var(--amb);} .chip.amb .n{color:var(--amb);}
 .chip.grn{background:var(--grnsoft);color:var(--grn);} .chip.grn .n{color:var(--grn);}
+.chip.run{background:var(--blusoft);color:var(--blu);} .chip.run .n{color:var(--blu);}
 .chip.zero{background:transparent;border-color:var(--bdr);color:var(--mut);} .chip.zero .n{color:var(--mut);}
+/* Only clickable chip — opens the confirm queue, so it gets a border + pointer to read as a button. */
+.chip.confirm{background:var(--g-soft);color:var(--g);border-color:var(--gbdr);cursor:pointer;font-family:inherit;}
+.chip.confirm .n{color:var(--g);}
+.chip.confirm:hover{border-color:var(--g);}
 
-/* Narrow screens: drop the wordmark for the compact mark and tighten everything
-   just enough that logo + chips + Run + menu still share one row. */
+/* Narrow screens: compact mark, tightened so logo + chips + Run + menu share one row. */
 @media (max-width:820px){
   .header-inner{gap:7px;padding:8px 10px;}
   .header-logo,.header-logo-dark,
@@ -134,15 +135,12 @@ header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1
 .edit-boundary-bar .btn:hover{background:rgba(255,255,255,.22);border-color:#fff;}
 .edit-boundary-bar .btn.primary{background:#fff;color:var(--g);border-color:#fff;}
 .edit-boundary-bar .btn.primary:hover{background:#f3e8ff;}
-/* Leaflet.draw's toolbar icon sprite is designed for a light background — invert it in dark mode,
-   the same trick used for the header logo. */
+/* Leaflet.draw's icon sprite assumes a light background — invert in dark mode. */
 [data-theme="dark"] .leaflet-draw-toolbar a{filter:invert(1) hue-rotate(180deg);}
 .leaflet-draw-toolbar a{border-radius:5px!important;}
 
-/* Leaflet's base/overlay layer picker (Satellite / Streets / Labels). The page's own
-   `label{...}` rule (used for form fields) otherwise leaks into Leaflet's control and
-   scrambles its layout — this re-asserts the control's own box model at higher
-   specificity so it's immune to that, and themes it to match the app. */
+/* Layer picker: the page's own `label{...}` rule leaks into Leaflet's control —
+   re-assert its box model at higher specificity and theme it to match the app. */
 .leaflet-control-layers{
   background:var(--bg-card);color:var(--txt);border:1px solid var(--bdr);
   border-radius:8px;box-shadow:var(--shd);
@@ -171,25 +169,41 @@ header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1
   border-left:4px solid transparent;transition:background .1s,border-color .1s;}
 .field-row:hover{background:var(--sllt);}
 .field-row.active{background:var(--g-soft);}
-/* Colour the row's leading edge by urgency — a scannable triage cue that replaces the
-   old status dot. :has() reads the flag class the list already renders, so no JS change. */
+/* Leading-edge colour by urgency; :has() reads the flag class the list already renders. */
 .field-row:has(.flag.red){border-left-color:var(--red);}
 .field-row:has(.flag.amb){border-left-color:var(--amb);}
 .field-row:has(.flag.grn){border-left-color:var(--grn);}
 .flag{display:none;}
 .fr-main{flex:1;min-width:0;}
 .fr-name{font-weight:700;font-size:14.5px;color:var(--txt);display:flex;align-items:center;gap:7px;}
+.fr-pend{font-size:12px;color:var(--g);cursor:pointer;line-height:1;}
 .fr-rain{font-size:12px;color:var(--mut);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fr-rain.on{color:var(--teal);font-weight:600;}
 .fr-sub{font-size:12.5px;color:var(--mut);margin-top:2px;}
 .fr-status{display:inline-flex;align-items:center;font-size:12px;font-weight:700;margin-top:7px;padding:3px 10px;border-radius:20px;}
 .fr-status.red{background:var(--redsoft);color:var(--red);} .fr-status.amb{background:var(--ambsoft);color:var(--amb);}
-.fr-status.grn{background:var(--grnsoft);color:var(--grn);} .fr-status.gray{background:var(--sllt);color:var(--mut);}
+.fr-status.grn{background:var(--grnsoft);color:var(--grn);} .fr-status.run{background:var(--blusoft);color:var(--blu);}
+.fr-status.gray{background:var(--sllt);color:var(--mut);}
 .fr-actions{display:flex;flex-direction:column;gap:2px;flex-shrink:0;}
 .mini{font-size:12px;color:var(--mut);border:1px solid var(--mut);border-radius:5px;background:transparent;padding:3px 9px;cursor:pointer;font-family:inherit;font-weight:600;transition:background .1s,color .1s;}
 .mini:hover{background:var(--g-soft);color:var(--g);}
 .empty{padding:38px 22px;text-align:center;color:var(--mut);font-size:14px;line-height:1.7;}
 .empty b{color:var(--txt);}
+
+/* ── Confirm irrigation (actuals queue) ── */
+.ci-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;}
+.ci-card{background:var(--sllt);border:1px solid var(--bdr);border-radius:8px;padding:12px 14px;margin-bottom:8px;}
+.ci-name{font-weight:700;font-size:14px;color:var(--txt);}
+.ci-meta{font-size:12.5px;color:var(--mut);margin-top:2px;}
+.ci-meta b{color:var(--red);font-weight:700;}
+.ci-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;}
+.ci-btn{font-size:12.5px;font-weight:600;padding:6px 10px;border:1.5px solid var(--bdr);border-radius:6px;
+  background:var(--bg-card);color:var(--txt);cursor:pointer;font-family:inherit;}
+.ci-btn:hover{border-color:var(--mut);}
+.ci-btn.go:hover{border-color:var(--g);color:var(--g);}
+.ci-expand{display:flex;align-items:center;gap:8px;margin-top:9px;font-size:13px;color:var(--mut);flex-wrap:wrap;}
+.ci-expand input{width:auto;flex:0 0 auto;}
+.ci-expand input[type=number]{width:80px;}
 
 /* ── Modal ── */
 .overlay{position:fixed;inset:0;z-index:1500;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;}
@@ -238,11 +252,12 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 .sum-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:7px;margin-bottom:14px;}
 .sitem{background:var(--sllt);border:1px solid var(--bdr);border-radius:6px;padding:8px 9px;text-align:center;}
 .sval{font-size:1.02em;font-weight:700;color:var(--txt);}
-.sval.red{color:var(--red);} .sval.amb{color:var(--amb);} .sval.grn{color:var(--grn);}
+.sval.red{color:var(--red);} .sval.amb{color:var(--amb);} .sval.grn{color:var(--grn);} .sval.run{color:var(--blu);}
 .slbl{font-size:10.5px;color:var(--mut);margin-top:2px;text-transform:uppercase;letter-spacing:.04em;}
 .reco{border-radius:8px;padding:12px 15px;margin-bottom:14px;font-size:14.5px;font-weight:600;line-height:1.5;display:flex;align-items:center;gap:10px;}
 .reco.red{background:var(--redsoft);color:var(--red);} .reco.amb{background:var(--ambsoft);color:var(--amb);}
-.reco.grn{background:var(--grnsoft);color:var(--grn);} .reco.gray{background:var(--sllt);color:var(--mut);}
+.reco.grn{background:var(--grnsoft);color:var(--grn);} .reco.run{background:var(--blusoft);color:var(--blu);}
+.reco.gray{background:var(--sllt);color:var(--mut);}
 .ct-top{position:relative;height:190px;} .ct-bot{position:relative;height:92px;margin-top:6px;}
 .tscroll{max-height:230px;overflow:auto;margin-top:14px;border:1px solid var(--bdr);border-radius:7px;}
 table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums;}
@@ -269,11 +284,27 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
 .rain-input{width:58px;padding:3px 5px;font-size:13px;font-family:inherit;border:1.5px solid var(--g);border-radius:3px;text-align:center;background:var(--bg-input);color:var(--txt);}
 .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700;cursor:default;}
 .tag.red{background:var(--redsoft);color:var(--red);} .tag.amb{background:var(--ambsoft);color:var(--amb);}
-.tag.grn{background:var(--grnsoft);color:var(--grn);} .tag.blu{background:rgba(37,99,235,.12);color:#2563eb;}
+.tag.grn{background:var(--grnsoft);color:var(--grn);} .tag.blu{background:var(--blusoft);color:var(--blu);}
+.run-pill{display:inline-flex;align-items:center;gap:3px;margin-left:5px;padding:2px 9px;border-radius:20px;
+  font-size:12px;font-weight:600;background:var(--blusoft);color:var(--blu);cursor:default;white-space:nowrap;}
 
 .status-legend{margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr);display:flex;flex-direction:column;gap:6px;}
 .status-legend .sl-row{display:flex;align-items:baseline;gap:8px;font-size:12px;color:var(--mut);line-height:1.5;}
 .status-legend .tag{flex-shrink:0;min-width:64px;text-align:center;}
+
+/* ── Update prompt ── */
+/* Top-centred: the toast owns the bottom; z-index above the toast. */
+#updateBar{position:fixed;top:14px;left:50%;transform:translateX(-50%) translateY(-12px);
+  display:none;align-items:center;gap:10px;z-index:2100;
+  background:var(--bg-card);border:1px solid var(--gbdr);border-left:3px solid var(--g);
+  box-shadow:0 6px 24px rgba(0,0,0,.20);border-radius:9px;padding:9px 10px 9px 14px;
+  font-size:14px;color:var(--txt);opacity:0;transition:opacity .2s,transform .2s;max-width:calc(100vw - 24px);}
+#updateBar.show{display:flex;opacity:1;transform:translateX(-50%) translateY(0);}
+#updateBar .u-txt{font-weight:600;white-space:nowrap;}
+@media (max-width:420px){
+  #updateBar{font-size:13px;gap:7px;padding:8px 8px 8px 11px;}
+  #updateBar .u-txt{white-space:normal;}
+}
 
 /* ── Toast / spinner ── */
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--txt);color:var(--bg-card);
@@ -317,6 +348,7 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
       <div class="menu-wrap" id="menuWrap">
         <button class="btn sm" id="menuBtn" onclick="toggleMenu()" title="More options">⋯</button>
         <div class="menu-drop" id="menuDrop">
+          <button class="menu-item" onclick="openConfirmModal();closeMenu()">✓ Confirm irrigation</button>
           <button class="menu-item" onclick="openDigest();closeMenu()">✦ Farm digest</button>
           <div class="menu-sep"></div>
           <button class="menu-item" onclick="exportFields();closeMenu()">⬇ Export fields</button>
@@ -543,14 +575,27 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
         </table>
       </div>
       <div class="status-legend">
-        <div class="sl-row"><span class="tag grn">OK</span> Soil is above the MAD trigger — no action needed.</div>
-        <div class="sl-row"><span class="tag red">Irrigate</span> Soil is at or below the MAD trigger — irrigation applied (or due) today.</div>
-        <div class="sl-row"><span class="tag blu">Running Xd</span> System is mid-application; "Xd" is the days remaining until this pass completes.</div>
-        <div class="sl-row"><span class="tag blu">Rain hold</span> Irrigation was due but is held back because rain is likely within your set window.</div>
-        <div class="sl-row"><span class="tag amb">Stress</span> Soil water is below the MAD trigger between irrigations.</div>
-        <div class="sl-row"><span class="tag amb">EOD&lt;MAD</span> Soil started the day OK but crop water use dropped it below the MAD trigger by end of day.</div>
+        <div class="sl-row"><span class="tag grn">OK</span> Soil is above the MAD trigger.</div>
+        <div class="sl-row"><span class="tag amb">Stress</span> Soil water is below the MAD trigger.</div>
+        <div class="sl-row"><span class="tag amb">Rain hold</span> Irrigation was due but is held back because rain is likely within your set window.</div>
         <div class="sl-row"><span class="tag red">Alloc. out</span> Soil is dry but the seasonal water allocation has been used up.</div>
+        <div class="sl-row"><span class="tag amb">Skipped</span> You confirmed irrigation was skipped or delayed on a day the model recommended it.</div>
+        <div class="sl-row"><span class="run-pill" style="margin-left:0;">💧 Xd left</span> The system is applying water that day, independent of the status pill next to it — a field can be Stress and 💧 at the same time. It counts down the days left in the pass; a checkmark means you've confirmed it.</div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM IRRIGATION MODAL (actuals queue — reconciles what really happened against the plan) -->
+<div class="overlay" id="confirmModal" style="display:none;" onclick="if(event.target===this)closeConfirmModal()">
+  <div class="modal w-digest">
+    <div class="modal-hdr"><h3>Confirm irrigation</h3><button class="x" onclick="closeConfirmModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="ci-hdr">
+        <span class="hint" id="confirmProgress"></span>
+        <button class="btn sm" id="confirmBulkBtn" onclick="confirmAllPlanned()">✓ Applied as planned, all</button>
+      </div>
+      <div id="confirmBody"></div>
     </div>
   </div>
 </div>
@@ -617,7 +662,7 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
 <div class="overlay" id="aboutModal" style="display:none;" onclick="if(event.target===this)closeAbout()">
   <div class="modal w-digest">
     <div class="modal-hdr">
-      <h3>About DRIP</h3>
+      <h3>About DRIP <span id="aboutVersion" style="font-size:12px;font-weight:500;color:var(--mut);margin-left:6px;"></span></h3>
       <button class="x" onclick="closeAbout()">&times;</button>
     </div>
     <div class="modal-body" style="font-size:14px;line-height:1.7;color:var(--txt);">
@@ -631,10 +676,17 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
         <p style="font-size:13px;margin-bottom:0;">This license is provisional and subject to change. Full license text: <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" rel="noopener" style="color:var(--g);">polyformproject.org</a>.</p>
       </div>
     </div>
-    <div class="modal-ftr">
-      <button class="btn primary" onclick="closeAbout()">I understand — continue</button>
+    <div class="modal-ftr" style="justify-content:space-between;align-items:center;">
+      <span id="aboutBuild" style="font-size:12px;color:var(--mut);"></span>
+      <button class="btn primary" onclick="closeAbout()">Close</button>
     </div>
   </div>
+</div>
+
+<div id="updateBar" role="status">
+  <span class="u-txt">✦ New version available</span>
+  <button class="btn primary sm" id="updateBtn">Refresh</button>
+  <button class="btn ghost sm" id="updateLater">Later</button>
 </div>
 
 <div id="toast"></div>
@@ -642,6 +694,13 @@ td.rain-edited::after{content:'●';font-size:6px;color:var(--teal);vertical-ali
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script>
+// ════════════════════════════════════════════════════════════
+//  APP VERSION
+//  Keep this in sync with CACHE in sw.js — the service worker only
+//  ships a new build when that cache name changes.
+// ════════════════════════════════════════════════════════════
+const APP_VERSION = '1.2.0';
+
 // ════════════════════════════════════════════════════════════
 //  MODEL CONSTANTS
 // ════════════════════════════════════════════════════════════
@@ -652,9 +711,8 @@ const CROPS = {
   winterWheat: {name:"Winter Wheat", Kc_ini:.10,Kc_mid:1.15,Kc_end:.25,stages:[135,45,55,15],root:48,plantMonthDay:'10-10'},
   sunflower:   {name:"Sunflower",    Kc_ini:.35,Kc_mid:1.10,Kc_end:.35,stages:[25,35,45,25],root:48,plantMonthDay:'05-20'},
 };
-// FC/WP/CN are pedotransfer-function estimates. silt, sandyClayLoam, siltyClayLoam are
-// interpolated from published USDA-texture water-retention tables and flagged "(est.)"
-// as a reminder they aren't site-calibrated.
+// FC/WP/CN are pedotransfer estimates; entries flagged "(est.)" are interpolated
+// from USDA-texture tables and not site-calibrated.
 const SOILS = {
   sand:          {name:'Sand',             FC:15.4,WP: 3.5,CN:72},
   loamySand:     {name:'Loamy Sand',       FC:18.6,WP: 6.3,CN:74},
@@ -674,10 +732,8 @@ const DEDUP_KM=4;          // fields within this radius share one weather reques
 const WX_MAX_AGE_MS=6*3600*1000;
 const GAL_PER_AC_IN=27154; // gallons in one acre-inch
 
-// Irrigation systems differ here only in application efficiency and in the units
-// people naturally think in. The delivery physics (applyDays) is identical for all
-// of them: a pivot revolution and an SDI zone cycle are both "time to put depth d
-// on area A at flow Q". `eff` is a starting point — the field's own value wins.
+// Systems differ only in typical efficiency and preferred capacity unit; delivery
+// physics (applyDays) is identical for all. `eff` is a preset — the field's value wins.
 const SYSTEMS = {
   pivotImpact: {name:'Center pivot — impact sprinkler', eff:75, unit:'gpm'},
   pivotLepa:   {name:'Center pivot — LEPA/LESA/drop',   eff:90, unit:'gpm'},
@@ -740,17 +796,23 @@ function lookupSoilTexture(lat, lng){
 // ════════════════════════════════════════════════════════════
 //  STATE + PERSISTENCE
 // ════════════════════════════════════════════════════════════
-const LS_FIELDS='irr.fields.v1', LS_WX='irr.weather.v1', LS_SET='irr.settings.v1', LS_RAIN='irr.rain.v1';
+const LS_FIELDS='irr.fields.v1', LS_WX='irr.weather.v1', LS_SET='irr.settings.v1', LS_RAIN='irr.rain.v1', LS_IRRLOG='irr.irrigLog.v1';
 let state = { fields:[], weather:null, map:null, group:null, activeId:null,
               layers:{}, defaults:null };
 let dTop=null, dBot=null;
 let rainOverrides = {};  // { fieldId: { "YYYY-MM-DD": inches } }
+// What actually happened vs. what the model recommended — the "confirm irrigation" queue reads/writes this.
+// { fieldId: { "YYYY-MM-DD": {action:'planned'|'skipped'|'partial'|'moved', amount?, appliedOn?, loggedAt} } }
+// The date key is always the day the model recommended action; 'moved' additionally carries the day it
+// actually happened in appliedOn. simulateField() reads this to override what it would otherwise assume.
+let irrigationLog = {};
 
 function loadJSON(k,fb){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):fb; }catch(e){ return fb; } }
 function saveJSON(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){ console.warn('save fail',k,e); } }
-function saveFields(){ saveJSON(LS_FIELDS, state.fields); }
+function saveFields(){ saveJSON(LS_FIELDS, state.fields.map(({_sim,_rows,...clean})=>clean)); }
 function saveWeather(){ if(state.weather) saveJSON(LS_WX, state.weather); }
 function saveRainOverrides(){ saveJSON(LS_RAIN, rainOverrides); }
+function saveIrrigationLog(){ saveJSON(LS_IRRLOG, irrigationLog); }
 function saveSettings(){ saveJSON(LS_SET, {center:state.map?[state.map.getCenter().lat,state.map.getCenter().lng]:null,
   zoom:state.map?state.map.getZoom():null, defaults:state.defaults, theme:localStorage.getItem('theme')||'light'}); }
 
@@ -764,7 +826,10 @@ const uid = (centroid) => {
   }
   return `f.${t}.${rand}`;
 };
-const todayStr = () => { const d=new Date(); d.setHours(0,0,0,0); return d.toISOString().split('T')[0]; };
+// Local-calendar date string. Never use toISOString() for day keys — it converts
+// to UTC and shifts the date by one in UTC+ timezones.
+const isoDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const todayStr = () => isoDate(new Date());
 function fmtPlantDate(ds){
   if(!ds) return '—';
   const d=new Date(ds+'T00:00:00');
@@ -891,39 +956,35 @@ const kcTotal = kc => kc.li+kc.ld+kc.lm+kc.ll;
 function getKc(i,kc){ const {ki,km,ke,li,ld,lm,ll}=kc, d=Math.min(i,li+ld+lm+ll-1);
   if(d<li) return ki; if(d<li+ld) return ki+((d-li)/ld)*(km-ki);
   if(d<li+ld+lm) return km; return km+((d-li-ld-lm)/ll)*(ke-km); }
-function getZ(i,crop,Zm,dyn){ if(!dyn) return Zm; const [Li,Ld]=crop.stages, Zi=8;
+// Dynamic roots: 8 in through the initial stage, linear to Zm across development.
+// Uses the field's Kc stage lengths so a customized curve keeps roots in sync.
+function getZ(i,kc,Zm,dyn){ if(!dyn) return Zm; const Li=kc.li, Ld=kc.ld, Zi=8;
   if(i<Li) return Zi; if(i<Li+Ld) return Zi+((i-Li)/Ld)*(Zm-Zi); return Zm; }
 function runoff(P,CN){ const S=1000/CN-10, Ia=.2*S; return P<=Ia?0:(P-Ia)*(P-Ia)/(P-Ia+S); }
 
-// Days for a system to deliver net depth `d` over area `A` at gross flow `Q` (gpm)
-// and efficiency `E`. System-agnostic: a pivot pass, an SDI zone cycle, and a furrow
-// set are all the same calculation.
+// Days to deliver net depth d (in) over area A (ac) at gross flow Q (gpm), efficiency E.
 function applyDays(A,d,Q,E){ return (A*d*GAL_PER_AC_IN)/(Q*E*60*24); }
 
-// Gross system flow in gpm. Fields configured in in/day (typical for SDI/drip) are
-// converted here so there is exactly one delivery formula in the model.
-// Falls back to legacy `pumpGPM` records saved before units existed.
+// Gross system flow in gpm (in/day capacities are converted here).
 function grossGpm(f){
-  const v = f.capValue ?? f.pumpGPM ?? 800;
+  const v = f.capValue ?? 800;
   if((f.capUnit||'gpm')==='inday') return (v*(f.areaAc||1)*GAL_PER_AC_IN)/(60*24);
   return v;
 }
 
-// The depth a strategy wants to apply, given the current deficit. Single source of
-// truth — the daily loop and the recommendation banner both call this.
+// Depth a strategy applies given the current deficit (shared by loop and banner).
 function plannedDepth(mode, need, fixedD){
   if(mode==='refill') return need;
   if(mode==='fixed' || mode==='interval') return fixedD;
   return Math.min(need, fixedD);   // hybrid
 }
 
-// True if any of the next `days` days is forecast at/above `probThr`. Historical days
-// carry no probability, so this only ever holds back irrigation near/after today —
-// we don't pretend to know what the forecast said last month.
+// True if any of the next `days` days is forecast at/above `probThr`.
+// Callers must only use this from today forward — see the guard in simulateField.
 function rainAheadOf(wx, date, days, probThr){
   for(let k=1;k<=days;k++){
     const d2=new Date(date); d2.setDate(d2.getDate()+k);
-    const w2=wx[d2.toISOString().split('T')[0]];
+    const w2=wx[isoDate(d2)];
     if(w2 && (w2.prob??0)>=probThr) return true;
   }
   return false;
@@ -942,6 +1003,20 @@ function simulateField(f, wx){
   const allocEnabled=(f.allocLimit>0)&&irrMode!=='none';
   const allocLimit=allocEnabled?f.allocLimit:Infinity;
 
+  // Confirmed actuals from the "confirm irrigation" queue override the model's own decision for that day.
+  // logZeroDates: days confirmed as skipped (or the original date of a "moved" entry).
+  // logAmtByDate: days with a confirmed applied depth — 'planned' uses the amount the model had
+  // already computed at confirm-time, so the physics don't change, only the confirmation flag does.
+  const logZeroDates=new Set(), logAmtByDate=new Map();
+  Object.entries(irrigationLog[f.id]||{}).forEach(([ds0,entry])=>{
+    if(entry.action==='skipped') logZeroDates.add(ds0);
+    else if(entry.action==='partial' || entry.action==='planned') logAmtByDate.set(ds0, Math.max(0,entry.amount||0));
+    else if(entry.action==='moved'){
+      logZeroDates.add(ds0);
+      if(entry.appliedOn) logAmtByDate.set(entry.appliedOn, Math.max(0,entry.amount||0));
+    }
+  });
+
   const tStr=todayStr(), today=new Date(tStr+'T00:00:00'), t0=new Date(f.plantingDate+'T00:00:00');
   const simEnd=new Date(today); simEnd.setDate(simEnd.getDate()+FORECAST_DAYS);
   const seasonEnd=new Date(t0); seasonEnd.setDate(seasonEnd.getDate()+kcTotal(kc)-1);
@@ -949,15 +1024,15 @@ function simulateField(f, wx){
   const nDays=Math.max(1, Math.floor((lastDay-t0)/86400000)+1);
 
   const rows=[];
-  const Z0=getZ(0,crop,Zm,dyn);
+  const Z0=getZ(0,kc,Zm,dyn);
   let S=(soil.WP*Z0/100)+initPct*(soil.FC*Z0/100-soil.WP*Z0/100);
-  let busy=false, busyEnd=-1, totalNet=0, allocUsed=0, lastStart=-Infinity;
+  let busy=false, busyEnd=-1, totalNet=0, allocUsed=0, lastStart=-Infinity, passConfirmed=false;
 
   for(let i=0;i<nDays;i++){
     const date=new Date(t0); date.setDate(date.getDate()+i);
-    const ds=date.toISOString().split('T')[0], fut=date>today;
+    const ds=isoDate(date), fut=date>today;
 
-    const Zprev=i>0?getZ(i-1,crop,Zm,dyn):Z0, Zcur=getZ(i,crop,Zm,dyn);
+    const Zprev=i>0?getZ(i-1,kc,Zm,dyn):Z0, Zcur=getZ(i,kc,Zm,dyn);
     if(Zcur>Zprev){
       const WP_p=soil.WP*Zprev/100, FC_p=soil.FC*Zprev/100, PAW_p=FC_p-WP_p;
       const curFAW=PAW_p>0?Math.max(0,Math.min(1,(S-WP_p)/PAW_p)):0.75;
@@ -984,20 +1059,34 @@ function simulateField(f, wx){
     if(busy && i>=busyEnd) busy=false;
 
     const FAWpre=Math.max(0,Math.min(1,(S-WP_in)/(PAW+1e-9)));
-    let irr=0, tag='grn', st='OK';
+    let irr=0, tag=null, st=null;
     const allocLeft=allocLimit-allocUsed, allocOut=allocEnabled&&allocLeft<=0.001;
     const belowMad = FAWpre<(1-mad);
 
     if(irrMode!=='none'){
+      // A confirmed actual (from the "confirm irrigation" queue) wins over the model's own
+      // decision — it only ever applies to past/today rows, never to the forecast window.
+      const loggedAmt = !fut && logAmtByDate.has(ds) ? logAmtByDate.get(ds) : null;
+      const loggedZero = !fut && !logAmtByDate.has(ds) && logZeroDates.has(ds);
+
       // What makes irrigation due differs by strategy; everything after that is shared.
       const due = irrMode==='interval'
         ? (i-lastStart)>=intervalDays
         : belowMad;
-      const holdForRain = skipRain && rainAheadOf(wx,date,skipDays,skipProb);
+      // Rain hold applies from today forward only — past days carry the rain
+      // that actually fell, so a back-filled probability must not rewrite them.
+      const holdForRain = skipRain && date>=today && rainAheadOf(wx,date,skipDays,skipProb);
 
-      if(!busy && i>=estabDays && due){
+      if(loggedAmt!=null && loggedAmt>0){
+        irr=loggedAmt;
+        const pt=applyDays(area,irr,gpm,eff);
+        busy=true; busyEnd=i+Math.ceil(pt); lastStart=i; passConfirmed=true;
+        totalNet+=irr; allocUsed+=irr;
+      } else if(loggedZero || loggedAmt!=null){
+        st='Skipped'; tag='amb';
+      } else if(!busy && i>=estabDays && due){
         if(allocOut){ st='Alloc. out'; tag='red'; }
-        else if(holdForRain){ st='Rain hold'; tag='blu'; }
+        else if(holdForRain){ st='Rain hold'; tag='amb'; }
         else {
           const need=Math.max(0,FC_in-S);
           irr = plannedDepth(irrMode, need, fixedD);
@@ -1006,24 +1095,25 @@ function simulateField(f, wx){
             // Busy time follows the depth actually applied, so a hybrid partial fill
             // frees the system sooner than a full fixed pass would.
             const pt=applyDays(area,irr,gpm,eff);
-            busy=true; busyEnd=i+Math.ceil(pt); lastStart=i;
+            busy=true; busyEnd=i+Math.ceil(pt); lastStart=i; passConfirmed=false;
             totalNet+=irr; allocUsed+=irr;
           }
-          st='Irrigate'; tag='red';
         }
-      } else if(busy){
-        if(belowMad){ st='Stress'; tag='amb'; } else { st=`Running ${busyEnd-i}d`; tag='blu'; }
-      } else if(belowMad){ st='Stress'; tag='amb'; }
-      else { st='OK'; tag='grn'; }
-    } else {
-      if(belowMad){ st='Stress'; tag='amb'; } else { st='OK'; tag='grn'; }
+      }
     }
+    // Crop status is purely "is soil below the MAD trigger right now" — whether the system
+    // is actively running is a separate fact (the 💧 pill below), not folded into this word.
+    // Both can be true on the same day: the field can be stressed AND mid-pass at once.
+    if(st===null){ if(belowMad){ st='Stress'; tag='amb'; } else { st='OK'; tag='grn'; } }
+    const busyToday=busy, runLeft=busyToday?(busyEnd-i):0;   // captured after today's decision, so a pass starting today already shows the pill
 
     S=Math.min(FC_in,Math.max(0,S+(precip-R)+irr-ETc));
     const FAW=Math.max(0,Math.min(1,(S-WP_in)/(PAW+1e-9)));
-    if(st==='OK' && FAW<(1-mad)){ st='EOD<MAD'; tag='amb'; }
+    // A day that looked fine (OK) but finished below the trigger is, by definition, Stress —
+    // whether it crossed at 9am or 9pm isn't a distinction a farmer needs.
+    if(tag==='grn' && FAW<(1-mad)){ st='Stress'; tag='amb'; }
 
-    rows.push({i,ds,fut,precip,mesoP,prob,ETo,Kc,ETc,R,irr,FC_in,WP_in,PAW,Thr_in:Thr,S,FAW,st,tag,eff});
+    rows.push({i,ds,fut,precip,mesoP,prob,ETo,Kc,ETc,R,irr,runLeft,busy:busyToday,confirmed:busyToday&&passConfirmed,FC_in,WP_in,PAW,Thr_in:Thr,S,FAW,st,tag,eff});
   }
 
   // ── classify field-level status ──
@@ -1046,53 +1136,67 @@ function simulateField(f, wx){
     // Calendar-driven: MAD no longer decides *when*, but still reports whether the
     // chosen interval is actually keeping up.
     if(tRow.st==='Alloc. out'){ level='red'; label='Scheduled · allocation out'; }
-    else if(tRow.st==='Rain hold'){ level='grn'; label='Rain hold — watering skipped'; }
+    else if(tRow.st==='Rain hold'){ level='amb'; label='Rain hold — waiting on forecast rain'; }
     else if(tRow.irr>0){ level='red'; label='Scheduled watering today'; recNet=tRow.irr; }
     else if(tRow.FAW<madFAW){ level='amb'; label='Below MAD between waterings'; daysToMad=0; }
     else {
       const mi=fut.findIndex(r=>r.FAW<madFAW);
       const ni=fut.findIndex(r=>r.irr>0);
+      // Approaching-MAD wins over Running: if the schedule still can't keep up,
+      // that's a Watch, not a healthy in-progress pass.
       if(mi>=0){ level='amb'; label='Approaching MAD'; daysToMad=daysAhead(fut[mi].ds,today); }
+      else if(tRow.runLeft>0){ level='run'; label=`Irrigating — ${tRow.runLeft}d left`; }
       else if(ni>=0){ level='grn'; label=`Next watering in ${daysAhead(fut[ni].ds,today)}d`; }
     }
   }
   else {
     if(tRow.FAW<=madFAW){
       if(allocEnabled && allocLeft<=0.001){ level='red'; label='Below MAD · allocation out'; }
-      else if(tRow.st==='Rain hold'){ level='grn'; label='Rain hold — irrigation skipped'; }
+      else if(tRow.st==='Rain hold'){ level='amb'; label='Rain hold — waiting on forecast rain'; }
+      // Already mid-pass (from an earlier day) and still short: the system is committed,
+      // so there's nothing new to recommend — a Watch, not an "Irrigate now". A pass that
+      // starts today (tRow.irr>0) still needs the "Irrigate now" banner below, even though
+      // its own runLeft is already set.
+      else if(tRow.runLeft>0 && !tRow.irr){ level='amb'; label=`Irrigating — still below trigger, ${tRow.runLeft}d left`; }
       else { level='red'; label='Irrigate now';
-        const need=Math.max(0,tRow.FC_in-tRow.S);
-        recNet = plannedDepth(irrMode, need, fixedD);
-        if(allocEnabled) recNet=Math.min(recNet,allocLeft);
-        recNet=Math.max(0,recNet);
+        if(tRow.irr>0) recNet=tRow.irr;   // pass starts today — recommend the depth the model applied
+        else {
+          const need=Math.max(0,tRow.FC_in-tRow.S);
+          recNet = plannedDepth(irrMode, need, fixedD);
+          if(allocEnabled) recNet=Math.min(recNet,allocLeft);
+          recNet=Math.max(0,recNet);
+        }
       }
+    } else if(tRow.irr>0){
+      // The model applied irrigation today and it lifted the soil back above the
+      // trigger — that pass still has to happen in the real world, so it's the
+      // day's action, not an "OK".
+      level='red'; label='Irrigate now'; recNet=tRow.irr;
     } else {
       const fi=fut.findIndex(r=>r.FAW<=madFAW);
       if(fi>=0){ level='amb'; label='Approaching MAD'; daysToMad=daysAhead(fut[fi].ds,today); }
+      else if(tRow.runLeft>0){ level='run'; label=`Irrigating — ${tRow.runLeft}d left`; }
     }
   }
 
   const totP=rows.reduce((a,r)=>a+r.precip,0);
   const totET=rows.reduce((a,r)=>a+r.ETc,0);
-  const stressDays=rows.filter(r=>!r.fut && (r.tag==='amb'&&(r.st==='Stress'||r.st==='EOD<MAD'||r.st==='Alloc. out'))).length;
-  const progress=Math.min(100, Math.round(((today-t0)/86400000)/kcTotal(kc)*100));
+  const stressDays=rows.filter(r=>!r.fut && (r.st==='Stress'||r.st==='Alloc. out')).length;
+  const progress=Math.max(0, Math.min(100, Math.round(((today-t0)/86400000)/kcTotal(kc)*100)));
 
-  // Rain outlook over the window we actually trust (PRECIP_FORECAST_DAYS).
-  // Counted by forecast probability, not by amount, so a likely-but-light day
-  // still registers. rainSoonDays is null only when there is no forecast at all.
+  // Rain outlook over the window we actually trust (PRECIP_FORECAST_DAYS),
+  // counted by forecast probability so a likely-but-light day still registers.
   const rainWin = fut.filter(r=>daysAhead(r.ds,today)<=PRECIP_FORECAST_DAYS);
   const rainDays = rainWin.filter(r=>(r.prob??0)>=PRECIP_PROB_THRESHOLD);
   const rainSoonCount = rainDays.length;
   const rainSoonIn = rainDays.reduce((a,r)=>a+r.precip,0);
-  const rainSoonDays = rainSoonCount ? daysAhead(rainDays[0].ds, today) : null;
-  const rainSoonMaxProb = rainSoonCount ? Math.max(...rainDays.map(r=>r.prob??0)) : null;
   const hasForecast = rainWin.length>0;
 
   return { rows, sim:{
     level,label,daysToMad,recNet, recGross:eff>0?recNet/eff:recNet,
     todayFAW: tRow?tRow.FAW:null, mad:mad*100, irrMode,
     netIrr:totalNet, totP, totET, stressDays, progress,
-    rainSoonCount, rainSoonIn, rainSoonDays, rainSoonMaxProb, hasForecast,
+    rainSoonCount, rainSoonIn, hasForecast,
     allocLeft: isFinite(allocLeft)?allocLeft:null,
     area, crop:crop.name, soil:soil.name
   }};
@@ -1102,7 +1206,7 @@ function daysAhead(ds,today){ return Math.round((new Date(ds+'T00:00:00')-today)
 // ════════════════════════════════════════════════════════════
 //  MAP
 // ════════════════════════════════════════════════════════════
-const LEVEL_COLOR = {red:'#dc2626', amb:'#d97706', grn:'#16a34a', gray:'#64748b'};
+const LEVEL_COLOR = {red:'#dc2626', amb:'#d97706', run:'#2563eb', grn:'#16a34a', gray:'#64748b'};
 
 function initMap(){
   const set=loadJSON(LS_SET,{});
@@ -1251,6 +1355,7 @@ async function runAll(force){
 }
 function simulateAll(){
   if(!state.weather) return;
+  buildStations();   // assign f._station — not guaranteed to be set (e.g. right after page load)
   state.fields.forEach(f=>{
     const wx=(state.weather.data&&state.weather.data[f._station])||{};
     const {rows,sim}=simulateField(f,wx);
@@ -1258,15 +1363,23 @@ function simulateAll(){
   });
 }
 function renderChips(){
-  const c={red:0,amb:0,grn:0,gray:0};
+  const c={red:0,amb:0,run:0,grn:0,gray:0};
   state.fields.forEach(f=>{ const l=f._sim?f._sim.level:'gray'; c[l]++; });
-  document.getElementById('chips').innerHTML =
-    `<span class="chip red ${c.red?'':'zero'}"><span class="n">${c.red}</span> irrigate</span>`+
-    `<span class="chip amb ${c.amb?'':'zero'}"><span class="n">${c.amb}</span> watch</span>`+
-    `<span class="chip grn ${c.grn?'':'zero'}"><span class="n">${c.grn}</span> ok</span>`;
+  const out=[
+    `<span class="chip red ${c.red?'':'zero'}"><span class="n">${c.red}</span> irrigate</span>`,
+    `<span class="chip amb ${c.amb?'':'zero'}"><span class="n">${c.amb}</span> watch</span>`,
+  ];
+  // Only surface "running" when something actually is — a permanent 4th chip
+  // doesn't fit the phone header alongside Run fields and the menu.
+  if(c.run) out.push(`<span class="chip run"><span class="n">${c.run}</span> running</span>`);
+  out.push(`<span class="chip grn ${c.grn?'':'zero'}"><span class="n">${c.grn}</span> ok</span>`);
+  // The one clickable chip — only appears when there's actually a backlog to clear.
+  const pendingCount=getPendingConfirmations().length;
+  if(pendingCount) out.push(`<span class="chip confirm" onclick="openConfirmModal()" title="Confirm what actually happened"><span class="n">${pendingCount}</span> to confirm</span>`);
+  document.getElementById('chips').innerHTML=out.join('');
 }
 
-const urgencyRank={red:0,amb:1,grn:2,gray:3};
+const urgencyRank={red:0,amb:1,run:2,grn:3,gray:4};
 function renderList(){
   document.getElementById('fieldCount').textContent=state.fields.length;
   const list=document.getElementById('fieldList');
@@ -1288,6 +1401,8 @@ function renderList(){
     if(da!==db) return da-db;
     return (a._sim?a._sim.todayFAW??1:1)-(b._sim?b._sim.todayFAW??1:1);
   });
+  const pendingMap={};
+  getPendingConfirmations().forEach(p=>{ pendingMap[p.fieldId]=(pendingMap[p.fieldId]||0)+1; });
   list.innerHTML=arr.map(f=>{
     const s=f._sim;
     const lvl=s?s.level:'gray';
@@ -1301,10 +1416,12 @@ function renderList(){
         ? `🌧 ${s.rainSoonCount} day${s.rainSoonCount>1?'s':''} ≥${PRECIP_PROB_THRESHOLD}% · ${s.rainSoonIn.toFixed(2)}″ in ${PRECIP_FORECAST_DAYS}d`
         : `No rain ≥${PRECIP_PROB_THRESHOLD}% in next ${PRECIP_FORECAST_DAYS}d`;
     const rainCls = s&&s.rainSoonCount ? 'fr-rain on' : 'fr-rain';
+    const pend=pendingMap[f.id];
+    const pendIcon = pend ? `<span class="fr-pend" title="${pend} irrigation event${pend>1?'s':''} awaiting confirmation" onclick="event.stopPropagation();openConfirmModal();">⏱</span>` : '';
     return `<div class="field-row ${f.id===state.activeId?'active':''}" onclick="openDetail('${f.id}')">
       <div class="flag ${lvl}"></div>
       <div class="fr-main">
-        <div class="fr-name">${esc(f.name)}</div>
+        <div class="fr-name">${esc(f.name)}${pendIcon}</div>
         <div class="fr-sub">${CROPS[f.crop].name} · ${f.areaAc?f.areaAc.toFixed(1):'?'} ac</div>
         <div class="fr-sub">Planted ${fmtPlantDate(f.plantingDate)} · ${taw}</div>
         ${s?`<div class="${rainCls}">${rainTxt}</div>`:''}
@@ -1584,8 +1701,7 @@ function openForm(id, poly){
   document.getElementById('fRoot').value=f.rootDepth||CROPS[f.crop].root;
   document.getElementById('fRd').value=f.rdMode;
   document.getElementById('fSystem').value=SYSTEMS[f.system]?f.system:'other';
-  // Records saved before units existed carry pumpGPM only.
-  document.getElementById('fCap').value = f.capValue ?? f.pumpGPM ?? 800;
+  document.getElementById('fCap').value = f.capValue ?? 800;
   document.getElementById('fCapUnit').value = f.capUnit || 'gpm';
   document.getElementById('fInterval').value=f.intervalDays??7;
   document.getElementById('fSkipRain').checked=!!f.skipRain;
@@ -1732,6 +1848,169 @@ function resetFieldRain(fid){
 }
 
 // ════════════════════════════════════════════════════════════
+//  CONFIRM IRRIGATION — reconcile actual field work against the plan.
+//  A field only shows up here when a past/today row applied water (irr>0) via the
+//  model's own natural trigger and hasn't been confirmed yet. Once a log entry exists,
+//  simulateField() marks that pass `confirmed`, which is what keeps this list short —
+//  most fields never appear here, only the ones still awaiting a decision.
+// ════════════════════════════════════════════════════════════
+function resimulateField(fieldId){
+  const f=state.fields.find(x=>x.id===fieldId);
+  if(f && state.weather){
+    const wx=(state.weather.data&&state.weather.data[f._station])||{};
+    const result=simulateField(f,wx);
+    f._rows=result.rows; f._sim=result.sim;
+  }
+}
+
+function getPendingConfirmations(){
+  const tStr=todayStr(), out=[];
+  state.fields.forEach(f=>{
+    if(!f._rows) return;
+    f._rows.forEach(r=>{
+      if(!r.fut && r.ds<=tStr && r.irr>0 && !r.confirmed) out.push({fieldId:f.id, fieldName:f.name, ds:r.ds, amount:r.irr});
+    });
+  });
+  out.sort((a,b)=> a.ds!==b.ds ? (a.ds<b.ds?-1:1) : a.fieldName.localeCompare(b.fieldName));
+  return out;
+}
+
+function logIrrigation(fieldId, ds, action, extra){
+  if(!irrigationLog[fieldId]) irrigationLog[fieldId]={};
+  irrigationLog[fieldId][ds] = { action, loggedAt:Date.now(), ...extra };
+  saveIrrigationLog();
+  resimulateField(fieldId);
+}
+
+// Shared refresh after any confirm-queue action — a single log entry can change a field's
+// whole downstream schedule (e.g. skipping today can push MAD sooner tomorrow), so the map,
+// list, chips and modal all need to reflect the fresh simulation, not just the one field.
+function afterCiAction(){
+  renderMap(); renderList(); renderChips(); renderConfirmModal();
+  if(state.activeId && document.getElementById('detailModal').style.display==='flex'){
+    openDetail(state.activeId, document.getElementById('dTable').dataset.showAll==='1');
+  }
+}
+
+function ciConfirm(fieldId, ds, action, amount){
+  logIrrigation(fieldId, ds, action, action==='planned'?{amount}:{});
+  showToast(action==='skipped' ? '✓ Logged as skipped' : '✓ Confirmed applied as planned');
+  afterCiAction();
+}
+function ciExpand(cid, fieldId, ds, kind, amount){
+  const box=document.getElementById('ci-expand-'+cid);
+  if(box.dataset.open==='1' && box.dataset.kind===kind){ box.innerHTML=''; box.dataset.open=''; return; }
+  box.dataset.open='1'; box.dataset.kind=kind;
+  if(kind==='amt'){
+    box.innerHTML=`<div class="ci-expand"><input type="number" min="0" step="0.05" value="${amount.toFixed(2)}" id="ci-inp-${cid}">
+      <span>″ net actually applied</span>
+      <button class="ci-btn go" onclick="ciConfirmAmt('${fieldId}','${ds}','${cid}')">Log it</button></div>`;
+  } else if(kind==='date'){
+    box.innerHTML=`<div class="ci-expand"><span>Actually applied on</span>
+      <input type="date" id="ci-inp-${cid}" max="${todayStr()}" value="${ds}">
+      <button class="ci-btn go" onclick="ciConfirmMove('${fieldId}','${ds}','${cid}',${amount})">Log it</button></div>`;
+  } else {
+    // 'skipthrough' — for a known multi-day gap (equipment down, etc). Fills in every
+    // calendar day back to the oldest pending date, not just the sparse due-dates —
+    // see ciConfirmSkipThrough for why that distinction matters.
+    const yesterday=isoDate(new Date(new Date(todayStr()+'T00:00:00').getTime()-86400000));
+    box.innerHTML=`<div class="ci-expand"><span>Mark every day skipped, ${fmtPlantDate(ds)} through</span>
+      <input type="date" id="ci-inp-${cid}" min="${ds}" max="${yesterday}" value="${yesterday}">
+      <button class="ci-btn go" onclick="ciConfirmSkipThrough('${fieldId}','${cid}')">Log it</button></div>`;
+  }
+  document.getElementById('ci-inp-'+cid).focus();
+}
+function ciConfirmAmt(fieldId, ds, cid){
+  const v=parseFloat(document.getElementById('ci-inp-'+cid).value);
+  logIrrigation(fieldId, ds, 'partial', {amount:isNaN(v)?0:Math.max(0,v)});
+  showToast('✓ Logged actual amount');
+  afterCiAction();
+}
+function ciConfirmMove(fieldId, ds, cid, amount){
+  const v=document.getElementById('ci-inp-'+cid).value || ds;
+  logIrrigation(fieldId, ds, 'moved', {amount, appliedOn:v});
+  showToast('✓ Logged on the new date');
+  afterCiAction();
+}
+function ciConfirmSkipThrough(fieldId, cid){
+  const through=document.getElementById('ci-inp-'+cid).value;
+  const fieldPending=getPendingConfirmations().filter(p=>p.fieldId===fieldId);
+  if(!through || !fieldPending.length) return;
+  const start=fieldPending[0].ds;
+  if(through<start){ showToast('Pick a date on or after '+fmtPlantDate(start)); return; }
+  // Every day in the range gets logged, not just the dates the model happened to flag —
+  // otherwise a day left unlogged between two flagged dates lets the model quietly assume
+  // an irrigation happened there instead, which isn't true for a real multi-day outage.
+  if(!irrigationLog[fieldId]) irrigationLog[fieldId]={};
+  let d=new Date(start+'T00:00:00'); const end=new Date(through+'T00:00:00'); let n=0;
+  while(d<=end){
+    const ds=isoDate(d);
+    if(!irrigationLog[fieldId][ds]){ irrigationLog[fieldId][ds]={action:'skipped', loggedAt:Date.now()}; n++; }
+    d=new Date(d.getTime()+86400000);
+  }
+  saveIrrigationLog();
+  resimulateField(fieldId);
+  showToast(`✓ Logged ${n} day${n!==1?'s':''} as skipped`);
+  afterCiAction();
+}
+function confirmAllPlanned(){
+  const pending=getPendingConfirmations();
+  if(!pending.length) return;
+  pending.forEach(p=>{
+    if(!irrigationLog[p.fieldId]) irrigationLog[p.fieldId]={};
+    irrigationLog[p.fieldId][p.ds]={action:'planned', amount:p.amount, loggedAt:Date.now()};
+  });
+  saveIrrigationLog();
+  const seen=new Set();
+  pending.forEach(p=>{ if(!seen.has(p.fieldId)){ seen.add(p.fieldId); resimulateField(p.fieldId); } });
+  showToast(`✓ Confirmed ${pending.length} irrigation event${pending.length!==1?'s':''} as applied per plan`);
+  afterCiAction();
+}
+
+function renderConfirmModal(){
+  const pending=getPendingConfirmations();
+  // More than one past-due date can pile up for a single field (time away, a strategy
+  // change re-flagging older cycles, etc). Resolving the oldest always re-simulates and
+  // surfaces the next one on its own, so only ever show one card per field at a time —
+  // otherwise several near-identical cards for the same field read as "nothing happened."
+  const byField=new Map();
+  pending.forEach(p=>{ if(!byField.has(p.fieldId)) byField.set(p.fieldId,[]); byField.get(p.fieldId).push(p); });
+  const cards=[...byField.values()].map(list=>({...list[0], moreCount:list.length-1}));
+
+  const body=document.getElementById('confirmBody');
+  document.getElementById('confirmProgress').textContent = !cards.length ? '' :
+    `${cards.length} field${cards.length!==1?'s':''} awaiting confirmation` +
+    (pending.length>cards.length ? ` · ${pending.length} events total, oldest shown first` : '');
+  document.getElementById('confirmBulkBtn').style.display = pending.length ? '' : 'none';
+  if(!cards.length){
+    body.innerHTML=`<div class="empty"><b>All caught up.</b><br>Nothing is waiting to be confirmed — check back after your next irrigation pass.</div>`;
+    return;
+  }
+  body.innerHTML=cards.map(p=>{
+    const days=daysAhead(p.ds,new Date(todayStr()+'T00:00:00'));
+    const overdueTxt = days===0 ? 'due today' : `${Math.abs(days)} day${Math.abs(days)!==1?'s':''} overdue`;
+    const cid=`${p.fieldId}__${p.ds}`.replace(/[^a-zA-Z0-9_]/g,'');
+    const moreNote = p.moreCount>0
+      ? `<div class="ci-meta">↻ +${p.moreCount} more event${p.moreCount!==1?'s':''} queued for this field — resolving this one brings up the next.</div>` : '';
+    return `<div class="ci-card">
+      <div class="ci-name">${esc(p.fieldName)}</div>
+      <div class="ci-meta"><b>${overdueTxt}</b> · recommended ${p.amount.toFixed(2)}″ net on ${fmtPlantDate(p.ds)}</div>
+      ${moreNote}
+      <div class="ci-actions">
+        <button class="ci-btn go" onclick="ciConfirm('${p.fieldId}','${p.ds}','planned',${p.amount})">✓ Applied as planned</button>
+        <button class="ci-btn" onclick="ciExpand('${cid}','${p.fieldId}','${p.ds}','amt',${p.amount})">✎ Different amount</button>
+        <button class="ci-btn" onclick="ciConfirm('${p.fieldId}','${p.ds}','skipped',0)">⏭ Skipped</button>
+        <button class="ci-btn" onclick="ciExpand('${cid}','${p.fieldId}','${p.ds}','date',${p.amount})">📅 Different date</button>
+        ${p.moreCount>0 ? `<button class="ci-btn" onclick="ciExpand('${cid}','${p.fieldId}','${p.ds}','skipthrough',${p.amount})">⏩ Skip through…</button>` : ''}
+      </div>
+      <div id="ci-expand-${cid}"></div>
+    </div>`;
+  }).join('');
+}
+function openConfirmModal(){ renderConfirmModal(); document.getElementById('confirmModal').style.display='flex'; }
+function closeConfirmModal(){ document.getElementById('confirmModal').style.display='none'; }
+
+// ════════════════════════════════════════════════════════════
 //  DETAIL MODAL
 // ════════════════════════════════════════════════════════════
 function openDetail(id, showAll){
@@ -1761,6 +2040,7 @@ function openDetail(id, showAll){
       : `💧 Irrigate ${s.recNet.toFixed(2)}″ net (${s.recGross.toFixed(2)}″ gross) — soil at ${Math.round(s.todayFAW*100)}% TAW, below the ${s.mad}% MAD trigger.`;
   else if(s.level==='red') recoTxt=`⛔ ${s.label} — soil at ${Math.round(s.todayFAW*100)}% TAW.`;
   else if(s.level==='amb') recoTxt=`⚠ ${s.label}${s.daysToMad?` in ~${s.daysToMad} day${s.daysToMad!==1?'s':''}`:''} — soil at ${Math.round(s.todayFAW*100)}% TAW.`;
+  else if(s.level==='run') recoTxt=`💧 ${s.label} — soil at ${Math.round(s.todayFAW*100)}% TAW, above the ${s.mad}% trigger. System is busy until this pass finishes.`;
   else if(s.level==='grn') recoTxt = isInterval
       ? `✓ ${s.label} — soil at ${Math.round(s.todayFAW*100)}% TAW.`
       : `✓ Field is fine — ${Math.round(s.todayFAW*100)}% TAW, above the ${s.mad}% MAD trigger.`;
@@ -1799,7 +2079,7 @@ function nextSeason(id){
   if(cur){
     const d=new Date(cur+'T00:00:00');
     d.setFullYear(d.getFullYear()+1);
-    document.getElementById('fPlant').value=d.toISOString().split('T')[0];
+    document.getElementById('fPlant').value=isoDate(d);
     drawFormKc();
   }
   showToast('Planting date advanced one year — review crop & settings, then save');
@@ -1815,13 +2095,15 @@ function deleteActive(){
 
 function tagTooltip(st){
   if(st==='OK') return 'Soil is above the MAD trigger — no action needed.';
-  if(st==='Irrigate') return 'Soil is at/below the MAD trigger — irrigation applied (or due) today.';
-  if(st.startsWith('Running')) return 'System is mid-application; days remaining until this pass completes.';
   if(st==='Rain hold') return 'Irrigation was due but is being held back because rain is likely within your set window.';
-  if(st==='Stress') return 'Soil water is below the MAD trigger between irrigations.';
-  if(st==='EOD<MAD') return 'Soil started the day OK but crop water use dropped it below the MAD trigger by end of day.';
+  if(st==='Stress') return 'Soil water is below the MAD trigger.';
   if(st==='Alloc. out') return 'Soil is dry but the seasonal water allocation has been used up.';
+  if(st==='Skipped') return 'You confirmed irrigation was skipped or delayed on a day the model recommended it.';
   return '';
+}
+function runTooltip(runLeft, confirmed){
+  return `System is applying water — ${runLeft} day${runLeft!==1?'s':''} left in this pass.`
+    + (confirmed ? ' You confirmed this irrigation happened, possibly at a different depth than recommended.' : ' Not yet confirmed — see Confirm irrigation.');
 }
 function slugify(s){
   return String(s).trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || 'field';
@@ -1842,7 +2124,7 @@ function downloadFieldCSV(id){
     r.precip.toFixed(2), r.ETo.toFixed(3), r.Kc.toFixed(2), r.ETc.toFixed(3), r.R.toFixed(3),
     r.irr>0?r.irr.toFixed(2):0, r.irr>0?(r.irr/r.eff).toFixed(2):0,
     r.FC_in.toFixed(2), r.WP_in.toFixed(2), r.S.toFixed(3), (r.FAW*100).toFixed(1),
-    r.st.replace(/[▶↻✓⚠⛔]/g,'').trim()
+    r.st.replace(/[▶↻⚠⛔]/g,'').trim()
   ]);
   const csv=[hdr,...rows].map(row=>row.join(',')).join('\n');
   const filename=buildCsvFilename(f);
@@ -1882,7 +2164,7 @@ function drawDetailTable(f, showAll){
       <td>${r.S.toFixed(1)}</td>
       <td style="color:${r.fut?'var(--mut)':(r.FAW>=madFAW?'var(--grn)':'var(--red)')};font-weight:600">${Math.round(r.FAW*100)}%</td>
       <td>${applied}</td>
-      <td class="tl"><span class="tag ${r.tag}" title="${esc(tagTooltip(r.st))}">${esc(r.st)}</span></td>
+      <td class="tl"><span class="tag ${r.tag}" title="${esc(tagTooltip(r.st))}">${esc(r.st)}</span>${r.busy?` <span class="run-pill" title="${esc(runTooltip(r.runLeft,r.confirmed))}">💧 ${r.runLeft}d left${r.confirmed?' ✓':''}</span>`:''}</td>
     </tr>`;
   }).join('');
 
@@ -1965,8 +2247,9 @@ function buildDigest(){
       alloc_left_in: s&&s.allocLeft!=null?+s.allocLeft.toFixed(2):null,
     };
   });
-  const counts={irrigate_now:0,watch:0,ok:0,no_data:0};
+  const counts={irrigate_now:0,watch:0,running:0,ok:0,no_data:0};
   fields.forEach(x=>{ if(x.status==='red')counts.irrigate_now++; else if(x.status==='amb')counts.watch++;
+    else if(x.status==='run')counts.running++;
     else if(x.status==='grn')counts.ok++; else counts.no_data++; });
   return { generated_at:generatedAt, forecast_window_days:FORECAST_DAYS,
     field_count:fields.length, summary:counts,
@@ -2070,12 +2353,12 @@ function downloadBlob(blob, filename){
 function exportFields(){
   if(!state.fields.length){ showToast('No fields to export yet'); return; }
   const payload={
-    app:'farm-irrigation-planner', version:1, exportedAt:new Date().toISOString(),
+    app:'drip', schema:1, appVersion:APP_VERSION, exportedAt:new Date().toISOString(),
     fields: state.fields.map(({_sim,_rows,...clean})=>clean),
-    rainOverrides
+    rainOverrides, irrigationLog
   };
   downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),
-    `farm-fields-backup-${todayStr()}.json`);
+    `drip-fields-${todayStr()}.json`);
   showToast(`✓ Exported ${state.fields.length} field${state.fields.length!==1?'s':''}`);
 }
 
@@ -2114,9 +2397,9 @@ function handleImportFile(e){
     const existingIds=new Set(state.fields.map(f=>f.id));
     const fresh=valid.filter(f=>!existingIds.has(f.id));
     const dup=valid.filter(f=>existingIds.has(f.id));
-    _pendingImport={fresh,dup,importedRainOverrides:data.rainOverrides||{}};
+    _pendingImport={fresh,dup,importedRainOverrides:data.rainOverrides||{},importedIrrigationLog:data.irrigationLog||{}};
     if(!dup.length){
-      commitImport(fresh,[],false,data.rainOverrides||{});
+      commitImport(fresh,[],false,data.rainOverrides||{},data.irrigationLog||{});
       _pendingImport=null;
     } else {
       const parts=[`${fresh.length} new field${fresh.length!==1?'s':''} will be added.`,
@@ -2134,11 +2417,11 @@ function closeImportModal(){ document.getElementById('importModal').style.displa
 
 function confirmImport(overwrite){
   if(!_pendingImport) return;
-  commitImport(_pendingImport.fresh, _pendingImport.dup, overwrite, _pendingImport.importedRainOverrides||{});
+  commitImport(_pendingImport.fresh, _pendingImport.dup, overwrite, _pendingImport.importedRainOverrides||{}, _pendingImport.importedIrrigationLog||{});
   closeImportModal();
 }
 
-function commitImport(fresh, dup, overwrite, importedRainOverrides){
+function commitImport(fresh, dup, overwrite, importedRainOverrides, importedIrrigationLog){
   fresh.forEach(f=>state.fields.push(f));
   if(overwrite && dup.length){
     dup.forEach(nf=>{
@@ -2149,6 +2432,10 @@ function commitImport(fresh, dup, overwrite, importedRainOverrides){
   if(importedRainOverrides && typeof importedRainOverrides==='object'){
     Object.assign(rainOverrides, importedRainOverrides);
     saveRainOverrides();
+  }
+  if(importedIrrigationLog && typeof importedIrrigationLog==='object'){
+    Object.assign(irrigationLog, importedIrrigationLog);
+    saveIrrigationLog();
   }
   const added=fresh.length+(overwrite?dup.length:0);
   if(!added && !dup.length){ showToast('Nothing to import'); return; }
@@ -2162,9 +2449,14 @@ function commitImport(fresh, dup, overwrite, importedRainOverrides){
 // ════════════════════════════════════════════════════════════
 //  UTIL / THEME / INIT
 // ════════════════════════════════════════════════════════════
-const ABOUT_SEEN_KEY='irr.aboutSeen.v1';
-function openAbout(){ document.getElementById('aboutModal').style.display='flex'; }
-function closeAbout(){ document.getElementById('aboutModal').style.display='none'; localStorage.setItem(ABOUT_SEEN_KEY,'1'); }
+function openAbout(){
+  document.getElementById('aboutVersion').textContent = `v${APP_VERSION}`;
+  const offline = ('serviceWorker' in navigator) && navigator.serviceWorker.controller;
+  document.getElementById('aboutBuild').textContent =
+    `Version ${APP_VERSION} · ${offline ? 'offline ready' : 'online only'}`;
+  document.getElementById('aboutModal').style.display='flex';
+}
+function closeAbout(){ document.getElementById('aboutModal').style.display='none'; }
 
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
@@ -2214,6 +2506,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
 
   // load persisted state
   rainOverrides = loadJSON(LS_RAIN, {});
+  irrigationLog = loadJSON(LS_IRRLOG, {});
   state.fields=loadJSON(LS_FIELDS,[]);
   const set=loadJSON(LS_SET,{}); state.defaults=set.defaults||null;
   state.weather=loadJSON(LS_WX,null);
@@ -2224,8 +2517,12 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     renderList();
     // fit map to fields
     try{ if(state.group.getLayers().length) state.map.fitBounds(state.group.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){}
-    // auto-refresh weather if stale
-    if(!state.weather || (Date.now()-state.weather.fetchedAt)>WX_MAX_AGE_MS) runAll(false);
+    // auto-refresh weather if stale: too old, from a previous day, or missing a station
+    const w=state.weather;
+    const stale = !w || w.todayStr!==todayStr() ||
+      (Date.now()-w.fetchedAt)>WX_MAX_AGE_MS ||
+      !buildStations().every(s=>w.data && w.data[s.key]);
+    if(stale) runAll(false);
   } else {
     renderList();
     // First visit: try to center on the user's location silently.
@@ -2242,8 +2539,59 @@ window.addEventListener('DOMContentLoaded', async ()=>{
 </script>
 <script>
 if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW registration failed:',e));
+  window.addEventListener('load', async ()=>{
+
+    // Offer the update rather than forcing it — an automatic reload would discard
+    // whatever the user has half-typed into a field form.
+    function offerUpdate(worker){
+      const bar=document.getElementById('updateBar');
+      const btn=document.getElementById('updateBtn');
+      if(!bar || !worker || bar.classList.contains('show')) return;
+      bar.classList.add('show');
+      btn.onclick=()=>{
+        btn.disabled=true; btn.textContent='Updating…';
+        // Tells the waiting worker to activate; it then claims this page, which
+        // fires controllerchange below and triggers the one reload.
+        worker.postMessage({type:'SKIP_WAITING'});
+      };
+      document.getElementById('updateLater').onclick=()=>bar.classList.remove('show');
+    }
+
+    try{
+      const reg = await navigator.serviceWorker.register('sw.js');
+
+      // On a first-ever visit there is no controller yet; clients.claim() would
+      // still fire controllerchange, and reloading there would be pointless
+      // churn. Only a takeover *after* we were already controlled is an update.
+      const hadController = !!navigator.serviceWorker.controller;
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+        if(!hadController || reloading) return;
+        reloading = true;
+        window.location.reload();
+      });
+
+      // A build may already be waiting from a previous visit (e.g. the user
+      // tapped "Later", or closed the tab before deciding).
+      if(reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+
+      reg.addEventListener('updatefound', ()=>{
+        const nw = reg.installing;
+        if(!nw) return;
+        nw.addEventListener('statechange', ()=>{
+          // 'installed' with a controller already present means this is an
+          // update. Without a controller it's the very first install — nothing
+          // to announce, the user is already on the newest code.
+          if(nw.state==='installed' && navigator.serviceWorker.controller) offerUpdate(nw);
+        });
+      });
+
+      // Browsers only check for a new sw.js on navigation, which a standalone
+      // PWA may not do for days. Re-check when the app comes back to the front.
+      document.addEventListener('visibilitychange', ()=>{
+        if(!document.hidden) reg.update().catch(()=>{});
+      });
+    }catch(e){ console.warn('SW registration failed:', e); }
   });
 }
 </script>
