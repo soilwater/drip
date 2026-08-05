@@ -1,7 +1,7 @@
 // Bump this on every release. It is the ONLY thing that tells browsers a new
 // build exists — the old cache is deleted and clients reload automatically.
 // Keep in sync with APP_VERSION in index.html.
-const CACHE = 'drip-v1.2.0';
+const CACHE = 'drip-v1.3.0';
 
 // App shell. Every path here must resolve, or addAll() rejects and the whole
 // install fails silently — leaving users with no service worker at all.
@@ -26,7 +26,6 @@ const NETWORK_ONLY = [
   'api.open-meteo.com',
   'archive-api.open-meteo.com',
   'arcgisonline.com',
-  'ai-agent.andrespatrignani.workers.dev',
 ];
 
 self.addEventListener('install', e=>{
