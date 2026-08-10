@@ -2,14 +2,7 @@
 // build exists — the old cache is deleted and clients reload automatically.
 // Keep in sync with APP_VERSION in index.html.
 //
-// v1.1.0: the precache list had drifted from what index.html actually loads —
-// Chart.js was still listed after the chart moved to Plotly, and
-// IrrigationSpreadsheet.js (a local file the entire spreadsheet depends on)
-// was never in the list at all, meaning it would 404 offline. Fixed below.
-// The version bump itself is what makes the old cache — still holding the
-// stale Chart.js entry — actually get deleted, rather than lingering forever
-// alongside a same-named cache that just never removes old keys.
-const CACHE = 'drip-v1.0.0';
+const CACHE = 'drip-v2.0.0';
 
 // App shell. Every path here must resolve, or addAll() rejects and the whole
 // install fails silently — leaving users with no service worker at all.
