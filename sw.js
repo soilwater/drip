@@ -2,7 +2,7 @@
 // build exists — the old cache is deleted and clients reload automatically.
 // Keep in sync with APP_VERSION in index.html.
 //
-const CACHE = 'drip-v2.0.1';
+const CACHE = 'drip-v2.0.2';
 
 // App shell. Every path here must resolve, or addAll() rejects and the whole
 // install fails silently — leaving users with no service worker at all.
