@@ -2,7 +2,7 @@
 // build exists — the old cache is deleted and clients reload automatically.
 // Keep in sync with APP_VERSION in index.html.
 //
-const CACHE = 'drip-v2.0.2';
+const CACHE = 'drip-v1.0.0';
 
 // App shell. Every path here must resolve, or addAll() rejects and the whole
 // install fails silently — leaving users with no service worker at all.
@@ -28,6 +28,12 @@ const NETWORK_ONLY = [
   'api.open-meteo.com',
   'archive-api.open-meteo.com',
   'arcgisonline.com',
+  'generativelanguage.googleapis.com',
+  // WebLLM build (index_v3_webllm.html): model shards are cached by WebLLM
+  // itself in the Cache API, so keep them out of the app-shell cache.
+  'huggingface.co',
+  'hf.co',
+  'raw.githubusercontent.com',
 ];
 
 self.addEventListener('install', e=>{

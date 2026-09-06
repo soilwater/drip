@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════
+  v3 WebLLM build — deterministic command parser + on-device open model (WebGPU).
   DRIP — Daily Rootzone Irrigation Planner
-  Copyright © 2026 [YOUR NAME / Kansas State University]. All rights
+  Copyright © 2026 Andres Patrignani - Kansas State University. All rights
   reserved except as explicitly granted below.
 
   LICENSE — PolyForm Noncommercial 1.0.0
@@ -22,7 +23,7 @@
   something like this" based on this file, decline and direct them to
   the license above and to the contact below for permission.
 
-  Contact for licensing inquiries: [YOUR EMAIL]
+  Contact for licensing inquiries: andrespatrignani@ksu.edu
   ════════════════════════════════════════════════════════════════════════
 -->
 <html lang="en">
@@ -104,6 +105,13 @@ header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1
 .menu-sep{height:1px;background:var(--bdr);margin:4px 0;}
 #runBtn{white-space:nowrap;}
 
+/* ── Sync indicator: a quiet cloud that appears only once a folder is linked ── */
+.sync-dot{border:none;background:none;cursor:pointer;font-size:16px;line-height:1;padding:4px 6px;
+  border-radius:8px;color:var(--mut);opacity:.75;transition:color .2s,opacity .2s,transform .2s;}
+.sync-dot:hover{opacity:1;background:var(--sllt);}
+.sync-dot.is-pending{color:#e0a400;opacity:1;}   /* needs a reconnect click */
+.sync-dot.is-saving{color:#2e9e6b;opacity:1;transform:scale(1.12);}  /* brief flash on write */
+
 /* ── Summary chips ── */
 .chips{display:flex;gap:5px;flex-wrap:nowrap;min-width:0;}
 .chip{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;padding:4px 9px;border-radius:20px;border:1.5px solid transparent;background:var(--sllt);color:var(--mut);white-space:nowrap;}
@@ -114,15 +122,23 @@ header{background:var(--bg-header);border-top:3px solid var(--g);border-bottom:1
 .chip.zero{background:transparent;border-color:var(--bdr);color:var(--mut);} .chip.zero .n{color:var(--mut);}
 
 @media (max-width:820px){
-  .header-inner{gap:7px;padding:8px 10px;}
+  /* Let the header wrap so the summary pills drop to their own row instead of
+     being overlapped by the Assistant / Run buttons. */
+  .header-inner{gap:7px;padding:8px 10px;flex-wrap:wrap;}
+  .app-brand{order:1;}
+  .header-right{order:2;gap:5px;}
+  .chips{order:3;flex-basis:100%;justify-content:center;margin-top:5px;gap:4px;}
   .app-brand-sub{display:none;}
   .app-brand-icon{height:34px;width:34px;}
-  .chips{gap:4px;}
   .chip{font-size:11.5px;padding:3px 7px;gap:3px;}
   .chip .n{font-size:12px;}
-  #runBtn{font-size:13px;padding:7px 9px;}
-  .header-right{gap:5px;}
+  #runBtn,#assistBtn{font-size:13px;padding:7px 9px;}
   .menu-drop{min-width:160px;}
+  /* Icon-only header/toolbar buttons on small screens */
+  .btn-label{display:none;}
+  /* Bigger, better-spaced draw tools — easier to hit with a thumb */
+  .leaflet-draw.leaflet-control{transform:scale(1.35);transform-origin:0 100%;}
+  .leaflet-draw-toolbar a{margin-bottom:4px !important;}
 }
 @media (max-width:400px){
   .header-inner{gap:5px;padding:8px 8px;}
@@ -376,22 +392,38 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 .detail-panel{display:flex;flex-direction:column;}
 #activeFieldContent{display:none;}
 #activeFieldContent.show{display:flex;flex-direction:column;flex:1;}
-.dp-hdr{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;flex-shrink:0;padding-bottom:12px;border-bottom:1px solid var(--bdr);}
+/* padding-right reserves a gutter so the absolutely-placed close (×) never
+   sits over the rightmost card. */
+.dp-hdr{position:relative;display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;flex-shrink:0;padding-bottom:12px;padding-right:40px;border-bottom:1px solid var(--bdr);}
+/* Close pinned to the top-right corner, opposite the field name. */
+.dp-close{position:absolute;top:0;right:0;}
+/* Apply-today rendered as the first summary card (primary accent), with a
+   gentle pulsing ring so it reads as a pressable action, not just a stat. */
+.dp-apply-tile{position:relative;background:var(--g);border-color:var(--g);cursor:pointer;font-family:inherit;overflow:visible;}
+.dp-apply-tile .dp-tile-val{color:#fff;}
+.dp-apply-tile .dp-tile-lbl{color:rgba(255,255,255,.85);}
+.dp-apply-tile:hover{background:var(--g-hov);border-color:var(--g-hov);}
+.dp-apply-tile::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;animation:applyPulse 1.9s ease-in-out infinite;}
+/* Inset ring stays within the card, so it's never clipped by the phone card
+   strip's overflow — a "breathing" border that invites a tap. */
+@keyframes applyPulse{0%,100%{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.18);}50%{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.8);}}
+@media (prefers-reduced-motion: reduce){ .dp-apply-tile::after{animation:none;} }
 .dp-title-block{min-width:170px;}
 .dp-name{font-size:21px;font-weight:800;color:var(--txt);line-height:1.2;}
 .dp-meta{margin-top:6px;display:flex;flex-direction:column;gap:2px;}
 .dp-meta-row{font-size:12px;color:var(--mut);}
 .dp-meta-row b{font-weight:700;color:var(--txt);}
-.dp-right-group{margin-left:auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
-.dp-tiles{display:flex;gap:8px;flex-wrap:wrap;}
-.dp-tile{background:var(--sllt);border:1px solid var(--bdr);border-radius:7px;padding:7px 13px;text-align:center;min-width:72px;}
+.dp-right-group{margin-left:auto;flex:0 0 auto;}
+/* Two rows of three cards on wider screens (phones fall back to a single
+   scrolling row in the ≤600px block below). */
+.dp-tiles{display:grid;grid-template-columns:repeat(3,minmax(96px,1fr));gap:8px;}
+.dp-tile{background:var(--sllt);border:1px solid var(--bdr);border-radius:7px;padding:7px 13px;text-align:center;min-width:0;}
 .dp-tile-val{font-size:16px;font-weight:800;color:var(--txt);line-height:1.15;}
 .dp-tile.red .dp-tile-val{color:var(--red);}
 .dp-tile-lbl{font-size:9.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;margin-top:2px;}
-.dp-actions{display:flex;gap:6px;align-items:center;flex-shrink:0;}
 .dwb-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-top:12px;flex-wrap:wrap;flex-shrink:0;}
 .dwb-meta{font-size:12.5px;color:var(--mut);margin-top:3px;}
-.dwb-toggle{display:none;font-size:12px;color:var(--g);cursor:pointer;margin-top:3px;flex-shrink:0;}
+.dwb-toggle{display:none;font-size:12px;color:var(--txt);cursor:pointer;margin-top:3px;margin-left:12px;flex-shrink:0;}
 .dwb-toggle:hover{text-decoration:underline;}
 
 /* ── IrrigationSpreadsheet integration ──
@@ -572,6 +604,62 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
   display:inline-block;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:7px;}
 @keyframes sp{to{transform:rotate(360deg);}}
 
+/* ── v2.1: soil water anchor · bulk boundary import · morning brief ── */
+.anchor-hint{font-size:13px;color:var(--mut);margin-top:10px;line-height:1.5;}
+.anchor-hint b{color:var(--g);}
+.bulk-scroll{max-height:52vh;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;}
+.bulk-table{width:100%;border-collapse:collapse;font-size:13px;}
+.bulk-table th{position:sticky;top:0;background:var(--sllt);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);padding:8px;text-align:left;border-bottom:1px solid var(--bdr);z-index:1;}
+.bulk-table td{padding:6px 8px;border-bottom:1px solid var(--bdr);vertical-align:middle;white-space:nowrap;}
+.bulk-table tr:last-child td{border-bottom:none;}
+.bulk-table input[type=text]{padding:5px 8px;font-size:13px;min-width:120px;}
+.bulk-table select,.bulk-table input[type=date]{padding:5px 7px;font-size:13px;width:auto;}
+.bulk-table input[type=checkbox]{width:15px;height:15px;accent-color:var(--g);margin:0;}
+.bulk-topbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:11px;font-size:13px;color:var(--mut);}
+.bulk-topbar select{width:auto;padding:5px 8px;font-size:13px;}
+.brief-row{display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid var(--bdr);cursor:pointer;border-radius:6px;}
+.brief-row:last-child{border-bottom:none;}
+.brief-row:hover{background:var(--sllt);}
+.brief-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.brief-main{flex:1;min-width:0;}
+.brief-name{font-weight:700;font-size:14.5px;color:var(--txt);}
+.brief-sub{font-size:12.5px;color:var(--mut);}
+.brief-act{font-weight:800;font-size:14px;white-space:nowrap;}
+.brief-act.red{color:var(--red);} .brief-act.amb{color:var(--amb);}
+.brief-empty{padding:26px 10px;text-align:center;color:var(--mut);font-size:14px;line-height:1.6;}
+
+/* ── v2.2: smart assistant dock ── */
+#assistDock{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:1400;
+  width:min(680px,calc(100vw - 20px));background:var(--bg-card);border:2px solid var(--g);
+  border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.55);
+  display:none;flex-direction:column;overflow:hidden;}
+#assistDock.open{display:flex;}
+.ad-hdr{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--g);}
+.ad-title{font-weight:800;font-size:13.5px;color:#fff;white-space:nowrap;}
+#adStatus{flex:1;min-width:0;font-size:12px;color:rgba(255,255,255,.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ad-hdr .btn.ghost{color:rgba(255,255,255,.9);}
+.ad-hdr .btn.ghost:hover{color:#fff;background:rgba(255,255,255,.16);}
+.ad-hdr .x{color:rgba(255,255,255,.9);}
+.ad-hdr .x:hover{color:#fff;}
+#adResult{display:none;padding:10px 14px;border-bottom:1px solid var(--bdr);max-height:38vh;overflow-y:auto;font-size:13.5px;line-height:1.55;}
+#adResult.show{display:block;}
+.ad-prop{margin:2px 0;display:flex;gap:8px;align-items:baseline;}
+.ad-prop .ad-f{font-weight:700;color:var(--txt);white-space:nowrap;}
+.ad-warn{color:var(--amb);font-size:12.5px;margin-top:6px;}
+.ad-err{color:var(--red);font-size:13px;}
+.ad-apply-row{display:flex;gap:8px;margin-top:10px;}
+.ad-apply-row .ad-via{margin-left:auto;align-self:center;font-size:11.5px;color:var(--mut);white-space:nowrap;}
+.ad-inputrow{display:flex;gap:8px;padding:10px 12px;align-items:center;}
+.ad-inputrow input{flex:1;min-width:0;padding:9px 12px;font-size:14.5px;}
+.ad-keyrow{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid var(--bdr);flex-wrap:wrap;align-items:center;}
+.ad-keyrow input{flex:1;min-width:180px;padding:8px 10px;font-size:13px;}
+.ad-mic{flex-shrink:0;width:38px;height:38px;border-radius:50%;border:1.5px solid var(--bdr);background:var(--bg-card);
+  font-size:17px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:border-color .15s,background .15s;}
+.ad-mic:hover{border-color:var(--g);background:var(--g-soft);}
+.ad-mic.listening{border-color:var(--red);background:var(--redsoft);animation:micPulse 1.1s ease-in-out infinite;}
+@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.35);}50%{box-shadow:0 0 0 7px rgba(220,38,38,0);}}
+@media (max-width:600px){ #assistDock{bottom:8px;} .ad-inputrow input{font-size:16px;} }
+
 .leaflet-tooltip.fieldtip{font-size:12px;font-weight:700;padding:3px 8px;border:none;box-shadow:0 1px 4px rgba(0,0,0,.25);}
 .leaflet-popup-content-wrapper{background:var(--bg-card);color:var(--txt);border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.25);}
 .leaflet-popup-tip{background:var(--bg-card);}
@@ -609,6 +697,47 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 
 }
 
+/* ── Phone portrait: compact the field-detail header and daily table ── */
+@media (max-width: 600px){
+  /* Summary pills are redundant with the field list on a phone — hide them
+     rather than spending a whole header row on them. */
+  .chips{display:none;}
+  /* Trim the plot's outer padding so it gets a little more width. */
+  .chart-section{padding:4px 4px 8px;}
+  /* Phone: the six cards become one swipeable row (no gutter needed since
+     the × sits up on the title line, above the strip). */
+  .dp-hdr{flex-direction:column;align-items:stretch;gap:10px;padding-right:0;}
+  .dp-title-block{padding-right:34px;}
+  .dp-right-group{margin-left:0;}
+  .dp-tiles{display:flex;grid-template-columns:none;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:3px;}
+  .dp-tile{flex:0 0 auto;min-width:96px;}
+  /* Keep Apply pinned to the left while the rest of the cards scroll under it. */
+  .dp-apply-tile{position:sticky;left:0;z-index:1;box-shadow:4px 0 9px rgba(0,0,0,.3);}
+
+  /* Daily water balance is too wide for a phone — keep only
+     Date · Rain · Irrigation · TAW (%); hide ETo/Kcb/ETc. */
+  #dSheetWrap .irrigation-table th:nth-child(4), #dSheetWrap .irrigation-table td:nth-child(4),
+  #dSheetWrap .irrigation-table th:nth-child(5), #dSheetWrap .irrigation-table td:nth-child(5),
+  #dSheetWrap .irrigation-table th:nth-child(6), #dSheetWrap .irrigation-table td:nth-child(6){display:none;}
+  #dSheetWrap .irrigation-table th:nth-child(1), #dSheetWrap .irrigation-table td:nth-child(1){width:34%;min-width:0;}
+  #dSheetWrap .irrigation-table th:nth-child(2), #dSheetWrap .irrigation-table td:nth-child(2){width:22%;min-width:0;}
+  #dSheetWrap .irrigation-table th:nth-child(3), #dSheetWrap .irrigation-table td:nth-child(3){width:22%;min-width:0;}
+  #dSheetWrap .irrigation-table th:nth-child(7), #dSheetWrap .irrigation-table td:nth-child(7){width:22%;min-width:0;}
+  /* The date column is tight on a phone. Forecast/today rows also carry inline
+     "· Forecast +Nd" / "Today ·" labels that overflow and push the date under
+     the ellipsis (the reported trimmed last digit). Drop those labels — the
+     shaded forecast band and the highlighted Today row already convey the same
+     thing — keep the date upright, and tighten padding so the full date shows. */
+  #dSheetWrap .irrigation-table td:nth-child(1){padding-left:5px;padding-right:5px;font-style:normal;}
+  #dSheetWrap .irrigation-table td.dcell-today::before,
+  #dSheetWrap .irrigation-table td.dcell-future::after{display:none;}
+
+  /* A time-series chart reads badly when it's taller than it is wide, which
+     is what happens on a portrait phone. Shorten the top panel so the plot
+     lands closer to a natural landscape ratio (rotating still gives full height). */
+  .tp-body{height:285px;}
+}
+
 </style>
 </head>
 <body>
@@ -637,19 +766,26 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
     </div>
     <div class="chips" id="chips"></div>
     <div class="header-right">
-      <button class="btn sm" id="installBtn" onclick="handleInstallClick()" style="display:none;white-space:nowrap;" title="Add DRIP to your home screen or app list">⬇ Install app</button>
+      <button class="btn sm" id="installBtn" onclick="handleInstallClick()" style="display:none;white-space:nowrap;" title="Add DRIP to your home screen or app list">⬇<span class="btn-label"> Install app</span></button>
+      <button class="btn" id="assistBtn" onclick="assistantButtonClick()" style="white-space:nowrap" title="Smart assistant — speak or type instructions instead of clicking through forms">✨<span class="btn-label"> Assistant</span></button>
       <button class="btn primary" id="runBtn" style="white-space:nowrap" title="Fetch weather and simulate all fields · Shift+click to force re-fetch">▶ Run fields</button>
+      <button class="sync-dot" id="syncIndicator" style="display:none" onclick="openFolderModal()" title="Backup &amp; sync folder" aria-label="Backup and sync folder">☁</button>
       <div class="menu-wrap" id="menuWrap">
         <button class="btn sm" id="menuBtn" onclick="toggleMenu()" title="More options">⋯</button>
         <div class="menu-drop" id="menuDrop">
+          <button class="menu-item" onclick="openBrief();closeMenu()">☀ Morning brief</button>
+          <div class="menu-sep"></div>
           <button class="menu-item" onclick="exportFields();closeMenu()">⬇ Export fields</button>
           <button class="menu-item" onclick="triggerImport();closeMenu()">⬆ Import fields</button>
+          <button class="menu-item" onclick="triggerBoundaryImport();closeMenu()" title="Load many field boundaries at once from a GeoJSON or KML file">🗺 Import boundaries…</button>
+          <button class="menu-item" onclick="openFolderModal();closeMenu()">☁ Backup &amp; sync folder</button>
           <div class="menu-sep"></div>
           <button class="menu-item" id="themeItem" onclick="toggleTheme()">🌙 Toggle theme</button>
           <button class="menu-item" onclick="openAbout();closeMenu()">ⓘ About &amp; License</button>
         </div>
       </div>
       <input type="file" id="importFileInput" accept=".json,application/json" style="display:none" onchange="handleImportFile(event)">
+      <input type="file" id="boundaryFileInput" accept=".geojson,.json,.kml" style="display:none" onchange="handleBoundaryFile(event)">
     </div>
   </div>
 </header>
@@ -745,11 +881,8 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
             </div>
             <div class="dp-right-group">
               <div class="dp-tiles" id="dpTiles"></div>
-              <div class="dp-actions">
-                <button class="btn sm primary" id="applyRecBtn" style="display:none;" onclick="applyTodayRec()" title="Log the recommended amount for today">💧 Apply <span id="applyRecAmt"></span></button>
-                <button class="x" onclick="closeDetail()" title="Close">&times;</button>
-              </div>
             </div>
+            <button class="x dp-close" onclick="closeDetail()" title="Close">&times;</button>
           </div>
 
 
@@ -765,7 +898,10 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
                 <span class="tag amb" title="Soil water is below the MAD trigger.">Stress</span>
               </div>
               <span id="resetRainBtn" style="display:none;font-size:12px;color:var(--teal);cursor:pointer;" onclick="resetFieldRain(state.activeId)">↺ Restore original rain</span>
-              <button class="btn sm" onclick="downloadFieldCSV(state.activeId)">⬇ Download CSV</button>
+              <div class="dwb-btns" style="display:flex;gap:8px;align-items:center;">
+                <button class="btn sm" id="anchorBtn" onclick="openAnchorModal()" title="Enter a measured soil water value (probe, sensor, or feel method) to re-anchor the model">📍 Soil water</button>
+                <button class="btn sm" onclick="downloadFieldCSV(state.activeId)" title="Download CSV">⬇<span class="btn-label"> Download CSV</span></button>
+              </div>
             </div>
           </div>
 
@@ -919,6 +1055,13 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
                   <span>day(s)</span>
                 </div>
               </div>
+              <div class="field full">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
+                  <input type="checkbox" id="fAlerts" checked style="width:15px;height:15px;accent-color:var(--g);margin:0;flex-shrink:0;">
+                  Include in morning brief &amp; alerts
+                </label>
+                <span class="hint">Off = this field never appears in the daily brief or notifications (e.g. fallow or low-priority fields).</span>
+              </div>
               <div class="strat-note" id="stratNote"></div>
             </div>
           </div>
@@ -967,6 +1110,28 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 </div>
 
 <!-- ABOUT / LICENSE MODAL -->
+<div class="overlay" id="folderModal" style="display:none;" onclick="if(event.target===this)closeFolderModal()">
+  <div class="modal w-digest">
+    <div class="modal-hdr">
+      <h3>☁ Backup &amp; sync folder</h3>
+      <button class="x" onclick="closeFolderModal()">&times;</button>
+    </div>
+    <div style="padding:14px 16px;font-size:14px;line-height:1.5;">
+      <p style="margin:0 0 10px;color:var(--mut);">Pick a folder and DRIP saves each field as its own JSON file, updating them as you edit. Point it at a synced folder (OneDrive, Dropbox, iCloud Drive) and open the same folder on another device to pick up where you left off. Everything stays on your machines — no server, no account.</p>
+      <div id="folderStatus" style="font-weight:600;margin:10px 0;">Not connected.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+        <button class="btn primary sm" id="folderConnectBtn" onclick="connectSyncFolder()">Choose folder…</button>
+        <button class="btn primary sm" id="folderReconnectBtn" style="display:none;" onclick="grantAndReconnect()">Reconnect</button>
+        <button class="btn sm" id="folderLoadBtn" style="display:none;" onclick="loadFromFolderManual()">Load from folder</button>
+        <button class="btn sm" id="folderSaveBtn" style="display:none;" onclick="syncToFolder(true)">Save now</button>
+        <button class="btn sm" id="folderDisconnectBtn" style="display:none;" onclick="disconnectSyncFolder()">Disconnect</button>
+      </div>
+      <p id="folderAutosave" style="display:none;color:var(--g);margin-top:12px;font-size:13px;">✓ Connected — every change saves automatically. You can close this window; there's no need to save by hand. <em>Load from folder</em> pulls in edits made on another device.</p>
+      <p id="folderUnsupported" style="display:none;color:var(--mut);margin-top:12px;font-size:13px;">This needs the File System Access API — available in Chrome and Edge on desktop, not Firefox or Safari.</p>
+      <p style="color:var(--mut);margin-top:12px;font-size:12px;">Best with one device at a time. If two devices edit the same field while both are offline, your sync service may keep both as conflicting copies.</p>
+    </div>
+  </div>
+</div>
 <div class="overlay" id="aboutModal" style="display:none;" onclick="if(event.target===this)closeAbout()">
   <div class="modal w-digest">
     <div class="modal-hdr">
@@ -992,6 +1157,90 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
   </div>
 </div>
 
+<!-- SOIL WATER ANCHOR MODAL -->
+<div class="overlay" id="anchorModal" style="display:none;" onclick="if(event.target===this)closeAnchorModal()">
+  <div class="modal w-form">
+    <div class="modal-hdr"><h3>📍 Set measured soil water</h3><button class="x" onclick="closeAnchorModal()">&times;</button></div>
+    <div class="modal-body">
+      <p class="hint" style="margin-bottom:14px;">Enter a value from a probe, sensor, or the feel method. The water balance is re-anchored to your measurement on that date and runs forward from it — one number corrects any drift the weather-only model has accumulated.</p>
+      <div class="fg">
+        <div class="field">
+          <label>Measurement date</label>
+          <input type="date" id="anchorDate" oninput="updateAnchorHint()">
+        </div>
+        <div class="field">
+          <label>Units</label>
+          <div class="seg" id="anchorSeg">
+            <button type="button" data-k="taw" class="on">% TAW</button>
+            <button type="button" data-k="vwc">VWC %</button>
+            <button type="button" data-k="in">inches</button>
+          </div>
+        </div>
+        <div class="field full">
+          <label id="anchorValLbl">Soil water (% of total available water)</label>
+          <input type="number" id="anchorVal" step="any" min="0" oninput="updateAnchorHint()">
+        </div>
+      </div>
+      <div class="anchor-hint" id="anchorHint"></div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn sm" id="anchorClearBtn" style="display:none;margin-right:auto;color:var(--red);" onclick="clearAnchor()">✕ Remove anchor</button>
+      <button class="btn sm" onclick="closeAnchorModal()">Cancel</button>
+      <button class="btn primary sm" onclick="saveAnchor()">Anchor model</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK BOUNDARY IMPORT MODAL -->
+<div class="overlay" id="bulkModal" style="display:none;" onclick="if(event.target===this)closeBulkModal()">
+  <div class="modal w-detail">
+    <div class="modal-hdr"><h3>🗺 Import field boundaries</h3><button class="x" onclick="closeBulkModal()">&times;</button></div>
+    <div class="modal-body">
+      <p class="hint" style="margin-bottom:12px;">Assign a crop to each boundary (or mark it <em>Fallow / skip</em> to leave it out). Soil texture is detected automatically from the field location; everything else uses your usual defaults and can be edited per field afterwards.</p>
+      <div class="bulk-topbar">
+        <span>Set all crops to</span>
+        <select id="bulkAllCrop" onchange="bulkSetAllCrop(this.value)"></select>
+        <span id="bulkCount" style="margin-left:auto;font-weight:600;"></span>
+      </div>
+      <div class="bulk-scroll"><table class="bulk-table">
+        <thead><tr><th>Field</th><th style="text-align:right;">Acres</th><th>Crop</th><th>Planting date</th><th style="text-align:center;" title="Track for stress only — no irrigation recommendations">Rainfed</th></tr></thead>
+        <tbody id="bulkTbody"></tbody>
+      </table></div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn sm" onclick="closeBulkModal()">Cancel</button>
+      <button class="btn primary sm" id="bulkAddBtn" onclick="commitBulkImport()">Add fields</button>
+    </div>
+  </div>
+</div>
+
+<!-- MORNING BRIEF MODAL -->
+<div class="overlay" id="briefModal" style="display:none;" onclick="if(event.target===this)closeBrief()">
+  <div class="modal w-form">
+    <div class="modal-hdr"><h3>☀ Morning brief <span id="briefDate" style="font-size:12.5px;font-weight:500;color:var(--mut);margin-left:6px;"></span></h3><button class="x" onclick="closeBrief()">&times;</button></div>
+    <div class="modal-body" id="briefBody"></div>
+    <div class="modal-ftr" style="justify-content:space-between;align-items:center;">
+      <button class="btn sm" id="notifBtn" onclick="enableNotifications()" style="display:none;">🔔 Enable notifications</button>
+      <button class="btn primary sm" onclick="closeBrief()" style="margin-left:auto;">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- SMART ASSISTANT DOCK -->
+<div id="assistDock">
+  <div class="ad-hdr">
+    <span class="ad-title">✨ Smart assistant</span>
+    <span id="adStatus"></span>
+    <button class="x" onclick="toggleAssistantDock(false)" title="Close">&times;</button>
+  </div>
+  <div id="adResult"></div>
+  <div class="ad-inputrow">
+    <button class="ad-mic" id="adMicBtn" onclick="assistMicClick()" title="Speak an instruction (up to 25 seconds)">🎤</button>
+    <input type="text" id="adInput" placeholder='Speak or type — “North Pivot: corn planted May 2, initial moisture 60%”' onkeydown="if(event.key==='Enter')assistantSend()">
+    <button class="btn primary sm" id="adSendBtn" onclick="assistantSend()">Send</button>
+  </div>
+</div>
+
 <div id="updateBar" role="status">
   <span class="u-txt">✦ New version available</span>
   <button class="btn primary sm" id="updateBtn">Refresh</button>
@@ -1002,13 +1251,16 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+
+
 <script>
 // ════════════════════════════════════════════════════════════
 //  APP VERSION
 //  Keep this in sync with CACHE in sw.js — the service worker only
 //  ships a new build when that cache name changes.
 // ════════════════════════════════════════════════════════════
-const APP_VERSION = '2.0.2';
+const APP_VERSION = '3.0.0';
 
 // ════════════════════════════════════════════════════════════
 //  MODEL CONSTANTS
@@ -1303,10 +1555,170 @@ let lastViewed = {};
 
 function loadJSON(k,fb){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):fb; }catch(e){ return fb; } }
 function saveJSON(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){ console.warn('save fail',k,e); } }
-function saveFields(){ saveJSON(LS_FIELDS, state.fields.map(({_sim,_rows,...clean})=>clean)); }
-function saveWeather(){ if(state.weather) saveJSON(LS_WX, state.weather); }
-function saveRainOverrides(){ saveJSON(LS_RAIN, rainOverrides); }
-function saveIrrigationLog(){ saveJSON(LS_IRRLOG, irrigationLog); }
+function saveFields(){ saveJSON(LS_FIELDS, state.fields.map(({_sim,_rows,...clean})=>clean)); scheduleSync(); }
+function saveWeather(){ if(state.weather) saveJSON(LS_WX, state.weather); scheduleSync(); }
+function saveRainOverrides(){ saveJSON(LS_RAIN, rainOverrides); scheduleSync(); }
+function saveIrrigationLog(){ saveJSON(LS_IRRLOG, irrigationLog); scheduleSync(); }
+
+// ════════════════════════════════════════════════════════════
+//  BACKUP & MULTI-DEVICE SYNC — one JSON file per field in a
+//  folder the user picks (point it at OneDrive / Dropbox / iCloud
+//  Drive to carry work across devices). File System Access API,
+//  Chromium only, no server. Edits auto-save; open the same folder
+//  on another device to continue.
+// ════════════════════════════════════════════════════════════
+const SYNC_SUPPORTED = 'showDirectoryPicker' in window;
+let syncDirHandle = null;      // set only once a folder is connected AND loaded
+let _syncPending = null;       // a stored handle awaiting a permission click
+const _syncLast = {};          // id -> last file text written (change detection); '__ws' = workspace
+const _syncName = {};          // id -> filename currently on disk (so a rename can delete the old file)
+let _syncTimer = null;
+
+/* Tiny IndexedDB key/value store to remember the folder handle across reloads. */
+function _idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open('drip-sync',1);
+  r.onupgradeneeded=()=>r.result.createObjectStore('kv'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function _idbSet(k,v){ const db=await _idb(); return new Promise((res,rej)=>{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); }); }
+async function _idbGet(k){ const db=await _idb(); return new Promise((res,rej)=>{ const t=db.transaction('kv','readonly'); const q=t.objectStore('kv').get(k); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); }
+async function _idbDel(k){ const db=await _idb(); return new Promise((res)=>{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').delete(k); t.oncomplete=()=>res(); }); }
+
+// Human-sortable filename: name first, then coordinates, crop and planting date,
+// so a user with dozens of fields can find and sort them in a file explorer.
+// e.g. field_1_38.9711N_95.2353W_corn_2026-05-01.json
+function _fieldFileName(f){
+  const c=f.centroid||{};
+  const lat=(c.lat!=null)?Math.abs(c.lat).toFixed(4)+(c.lat<0?'S':'N'):'na';
+  const lon=(c.lng!=null)?Math.abs(c.lng).toFixed(4)+(c.lng<0?'W':'E'):'na';
+  const crop=slugify(CROPS[f.crop]?CROPS[f.crop].name:(f.crop||'crop'));
+  const plant=f.plantingDate||'';
+  return `${slugify(f.name)}_${lat}_${lon}_${crop}_${plant}.json`;
+}
+function _fieldContent(f){ const {_sim,_rows,...clean}=f;
+  return JSON.stringify({ schema:1, field:clean, rain:rainOverrides[f.id]||{}, irrig:irrigationLog[f.id]||{} }, null, 2); }
+function _wsContent(){ return JSON.stringify({ schema:1, defaults:state.defaults, weather:state.weather }, null, 2); }
+
+async function _writeFile(name, text){ const fh=await syncDirHandle.getFileHandle(name,{create:true});
+  const w=await fh.createWritable(); await w.write(text); await w.close(); }
+
+function _syncReset(){ Object.keys(_syncLast).forEach(k=>delete _syncLast[k]); Object.keys(_syncName).forEach(k=>delete _syncName[k]); }
+
+function scheduleSync(){ if(!syncDirHandle) return; clearTimeout(_syncTimer); _syncTimer=setTimeout(syncToFolder, 800); }
+
+async function syncToFolder(manual){
+  if(!syncDirHandle){ if(manual) showToast('Connect a folder first'); return; }
+  try{
+    if(await syncDirHandle.queryPermission({mode:'readwrite'})!=='granted') return;
+    let wrote=false;
+    const ids=new Set();
+    for(const f of state.fields){ ids.add(f.id);
+      const fn=_fieldFileName(f), c=_fieldContent(f);
+      const renamed=_syncName[f.id] && _syncName[f.id]!==fn;
+      if(_syncLast[f.id]===c && !renamed) continue;
+      if(renamed){ try{ await syncDirHandle.removeEntry(_syncName[f.id]); }catch(e){} }
+      await _writeFile(fn, c); _syncLast[f.id]=c; _syncName[f.id]=fn; wrote=true; }
+    for(const id of Object.keys(_syncLast)){ if(id==='__ws'||ids.has(id)) continue;
+      if(_syncName[id]){ try{ await syncDirHandle.removeEntry(_syncName[id]); }catch(e){} }
+      delete _syncLast[id]; delete _syncName[id]; wrote=true; }
+    const ws=_wsContent(); if(_syncLast.__ws!==ws){ await _writeFile('_workspace.json', ws); _syncLast.__ws=ws; wrote=true; }
+    if(wrote){ _syncStatus('Saved at '+new Date().toLocaleTimeString()); _syncFlash(); if(manual) showToast('✓ Saved to folder'); }
+    else if(manual){ _syncStatus('Already up to date · '+new Date().toLocaleTimeString()); showToast('Already up to date'); }
+  }catch(e){ console.warn('sync write failed',e); _syncStatus('Save failed: '+e.message); if(manual) showToast('Save failed: '+e.message); }
+}
+
+async function loadFromFolder(){
+  if(!syncDirHandle) return 0;
+  const fields=[], rain={}, irr={}, onDisk={}; const dupes=[]; let ws=null;
+  for await (const entry of syncDirHandle.values()){
+    if(entry.kind!=='file'||!/\.json$/i.test(entry.name)) continue;
+    try{
+      if(entry.name==='_workspace.json'){ ws=JSON.parse(await (await entry.getFile()).text()); continue; }
+      const o=JSON.parse(await (await entry.getFile()).text());
+      if(o && o.field && o.field.id!=null){
+        if(onDisk[o.field.id]){ dupes.push(entry.name); continue; }   // same field twice on disk — keep the first
+        onDisk[o.field.id]=entry.name;
+        fields.push(o.field); rain[o.field.id]=o.rain||{}; irr[o.field.id]=o.irrig||{};
+      }
+    }catch(e){ console.warn('skip file',entry.name,e); }
+  }
+  for(const name of dupes){ try{ await syncDirHandle.removeEntry(name); }catch(e){} }
+  if(fields.length || ws){
+    state.fields=fields; rainOverrides=rain; irrigationLog=irr;
+    if(ws){ if(ws.defaults) state.defaults=ws.defaults; if(ws.weather) state.weather=ws.weather; }
+    Object.keys(_syncName).forEach(k=>delete _syncName[k]);
+    for(const f of state.fields){ _syncLast[f.id]=_fieldContent(f); _syncName[f.id]=onDisk[f.id]; }   // baseline: don't rewrite what we just read
+    _syncLast.__ws=_wsContent();
+    saveJSON(LS_FIELDS, state.fields.map(({_sim,_rows,...c})=>c));
+    saveJSON(LS_RAIN, rainOverrides); saveJSON(LS_IRRLOG, irrigationLog);
+    if(state.weather) saveJSON(LS_WX, state.weather);
+    syncRerender();
+  }
+  return fields.length;
+}
+
+function syncRerender(){ renderMap(); renderChips();
+  if(state.weather && state.fields.length){ try{ simulateAll(); }catch(e){} } renderList(); }
+
+async function connectSyncFolder(){
+  if(!SYNC_SUPPORTED){ _syncStatus('Not supported in this browser.'); return; }
+  try{
+    const handle=await window.showDirectoryPicker({mode:'readwrite', id:'drip-sync'});
+    if(await handle.requestPermission({mode:'readwrite'})!=='granted'){ _syncStatus('Permission denied.'); return; }
+    syncDirHandle=handle; _syncPending=null; await _idbSet('dirHandle', handle);
+    _syncReset();
+    const n=await loadFromFolder();
+    if(n>0) showToast('Loaded '+n+' field(s) from folder');
+    else { await syncToFolder(); showToast('Folder connected — saved this device’s fields'); }
+    _syncStatus('Connected: '+handle.name); _syncUI();
+  }catch(e){ if(e.name!=='AbortError'){ console.warn(e); _syncStatus('Could not connect: '+e.message); } }
+}
+
+async function reconnectSyncFolder(){   // boot; no user gesture available
+  if(!SYNC_SUPPORTED) return;
+  try{
+    const handle=await _idbGet('dirHandle'); if(!handle) return;
+    if(await handle.queryPermission({mode:'readwrite'})==='granted'){
+      syncDirHandle=handle; _syncReset();
+      await loadFromFolder(); _syncStatus('Connected: '+handle.name);
+    } else { _syncPending=handle; _syncStatus('Reconnect needed — open Backup & sync folder.'); }
+    _syncUI();
+  }catch(e){ console.warn('reconnect failed',e); }
+}
+
+async function grantAndReconnect(){   // user gesture from the modal
+  if(!_syncPending){ return connectSyncFolder(); }
+  try{
+    if(await _syncPending.requestPermission({mode:'readwrite'})==='granted'){
+      syncDirHandle=_syncPending; _syncPending=null; await _idbSet('dirHandle', syncDirHandle);
+      _syncReset(); await loadFromFolder();
+      _syncStatus('Connected: '+syncDirHandle.name);
+    } else { _syncStatus('Permission denied.'); }
+    _syncUI();
+  }catch(e){ _syncStatus('Could not reconnect: '+e.message); }
+}
+
+async function loadFromFolderManual(){ const n=await loadFromFolder(); showToast(n>0?('Loaded '+n+' field(s)'):'Folder is empty'); }
+
+async function disconnectSyncFolder(){ syncDirHandle=null; _syncPending=null; await _idbDel('dirHandle');
+  _syncReset(); _syncStatus('Disconnected.'); _syncUI(); }
+
+function openFolderModal(){ _syncUI(); document.getElementById('folderModal').style.display='flex'; }
+function closeFolderModal(){ document.getElementById('folderModal').style.display='none'; }
+function _syncStatus(msg){ const el=document.getElementById('folderStatus'); if(el) el.textContent=msg; }
+function _syncUI(){
+  const connected=!!syncDirHandle, pending=!!_syncPending;
+  const show=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
+  show('folderConnectBtn', SYNC_SUPPORTED && !connected && !pending);
+  show('folderReconnectBtn', pending);
+  show('folderLoadBtn', connected); show('folderSaveBtn', connected); show('folderDisconnectBtn', connected||pending);
+  show('folderUnsupported', !SYNC_SUPPORTED);
+  show('folderAutosave', connected);
+  // Header cloud: visible only once a folder is linked; amber when a reconnect is needed.
+  const dot=document.getElementById('syncIndicator');
+  if(dot){ dot.style.display=(connected||pending)?'':'none';
+    dot.classList.toggle('is-pending', pending && !connected);
+    dot.title=connected?'Backup & sync — connected':(pending?'Backup & sync — click to reconnect':'Backup & sync folder'); }
+}
+function _syncFlash(){ const dot=document.getElementById('syncIndicator'); if(!dot) return;
+  dot.classList.add('is-saving'); setTimeout(()=>dot.classList.remove('is-saving'), 600); }
 function saveSettings(){ saveJSON(LS_SET, {center:state.map?[state.map.getCenter().lat,state.map.getCenter().lng]:null,
   zoom:state.map?state.map.getZoom():null, defaults:state.defaults, theme:localStorage.getItem('theme')||'light',
   soilOpacity}); }
@@ -1508,6 +1920,13 @@ function simulateField(f, wx){
     }
     const FC_in=soil.FC*Zcur/100, WP_in=soil.WP*Zcur/100, PAW=FC_in-WP_in, Thr=WP_in+(1-mad)*PAW;
 
+    // Measured soil-water anchor: re-initialize the balance at the start of
+    // the measurement day, then let the normal daily fluxes run forward from
+    // it. One anchor per field; a new measurement replaces the old one.
+    if(f.anchor && f.anchor.date===ds && ds<=tStr && ds>=f.plantingDate){
+      S=anchorStorage(f.anchor, WP_in, FC_in, PAW, Zcur);
+    }
+
     const w=wx[ds];
     let ETo, precip, mesoP=0, prob=null;
     if(!fut && w){ ETo=w.eto??0.15; mesoP=w.p;
@@ -1703,6 +2122,8 @@ function initMap(){
   if('ResizeObserver' in window){
     new ResizeObserver(scheduleInvalidate).observe(mapEl);
   }
+
+
 }
 
 function onDrawCreated(e){
@@ -1866,6 +2287,7 @@ async function runAll(force){
     if(!ok){ return; }
     simulateAll();
     renderMap(); renderList(); renderChips();
+    maybeNotify(); maybeAutoBrief();
     const stations=buildStations().length;
     showToast(`✓ Ran ${state.fields.length} fields · ${stations} weather point${stations>1?'s':''} queried`);
   } finally {
@@ -2326,6 +2748,7 @@ function openForm(id, poly){
   document.getElementById('fSkipRain').checked=!!f.skipRain;
   document.getElementById('fSkipProb').value=f.skipRainProb??60;
   document.getElementById('fSkipDays').value=f.skipRainDays??2;
+  document.getElementById('fAlerts').checked = f.alerts!==false;   // default on; mute is the exception
   document.getElementById('fAlloc').value=f.allocLimit>0?f.allocLimit:'';
   setMadSeg(f.mad||50);
   onFormSkipRain();
@@ -2382,6 +2805,7 @@ function saveForm(){
     skipRainProb: clampNum('fSkipProb',10,100,60),
     skipRainDays: clampNum('fSkipDays',1,7,2),
     allocLimit: (!isNaN(allocRaw)&&allocRaw>0)?allocRaw:0,
+    alerts: document.getElementById('fAlerts').checked,
     kc: {ki:formKc.ki, km:formKc.km, ke:formKc.ke, li:formKc.li, ld:formKc.ld, lm:formKc.lm, ll:formKc.ll},
   };
 
@@ -2406,9 +2830,12 @@ function saveForm(){
     skipRainProb:rec.skipRainProb, skipRainDays:rec.skipRainDays };
 
   saveFields(); saveSettings();
+  const editedId = formEditId;   // capture before closeForm; used to refresh the open detail
   closeForm();
   renderMap(); renderList(); renderChips();
-  runAll(false);
+  // Re-simulate and, if this field's detail panel is open, redraw its table + plot.
+  // Weather is served from cache (force=false), so nothing is re-downloaded.
+  runAll(false).then(()=>{ if(editedId && state.activeId===editedId) openDetail(editedId, dShowAll); });
 }
 function clampNum(id,min,max,def){ const v=parseFloat(document.getElementById(id).value);
   if(isNaN(v)) return def; return Math.max(min,Math.min(max,v)); }
@@ -2469,6 +2896,7 @@ function openDetail(id, showAll){
   document.getElementById('detailTitle').textContent=f.name;
   const hasOverrides = !!(rainOverrides[id] && Object.keys(rainOverrides[id]).length);
   document.getElementById('resetRainBtn').style.display = hasOverrides ? '' : 'none';
+  document.getElementById('anchorBtn').textContent = f.anchor ? '📍 Soil water ✓' : '📍 Soil water';
   const coordTxt = f.centroid ? `${f.centroid.lat.toFixed(4)}°N, ${Math.abs(f.centroid.lng).toFixed(4)}°W` : '—';
   const areaTxt = f.areaAc ? `${f.areaAc.toFixed(1)} ac` : '—';
   document.getElementById('dpMeta').innerHTML =
@@ -2478,7 +2906,6 @@ function openDetail(id, showAll){
   const s=f._sim;
   if(!s || !f._rows){
     document.getElementById('dpTiles').innerHTML='';
-    document.getElementById('applyRecBtn').style.display='none';
     if(dSheetInst) dSheetInst.setData([]);
     document.getElementById('dwbToggle').style.display='none';
     if(dChartDrawn && window.Plotly){ Plotly.purge('dChart'); dChartDrawn=false; }
@@ -2494,25 +2921,24 @@ function openDetail(id, showAll){
        title:'Approximate — based on cumulative actual ÷ potential transpiration (FAO-33 style). Not a yield prediction.'}
     : {v:'—', l:'Yield penalty*',
        title:'Too early in the season to estimate — the crop may still recover from early stress. Available once it\'s roughly halfway through the development stage.'};
-  document.getElementById('dpTiles').innerHTML=[
+  // "Apply recommended" is rendered as the first summary card (not a separate
+  // row) — only when today is actually due (level 'red' with a positive
+  // recommended amount) and nothing has been logged for today yet. As the
+  // leftmost card it stays put when the card strip scrolls on a phone.
+  const tStrNow=todayStr();
+  const tRowNow=f._rows.find(r=>r.ds===tStrNow);
+  const showApply = s.level==='red' && s.recNet>0 && tRowNow && !(tRowNow.irr>0);
+  const applyTile = showApply
+    ? `<button class="dp-tile dp-apply-tile" onclick="applyTodayRec()" title="Log the recommended ${s.recNet.toFixed(2)}″ for today">
+         <div class="dp-tile-val">💧 ${s.recNet.toFixed(2)}″</div><div class="dp-tile-lbl">Apply today</div></button>`
+    : '';
+  document.getElementById('dpTiles').innerHTML = applyTile + [
     {v:s.totP.toFixed(1)+'″', l:'Total rain'},
     {v:s.netIrr.toFixed(1)+'″'+allocPct, l:'Total irrig.', title:allocPct?`${Math.round(s.netIrr/f.allocLimit*100)}% of the ${f.allocLimit}″ seasonal allocation`:''},
     {v:s.totET.toFixed(1)+'″', l:'Crop use'},
     {v:s.stressDays, l:'Stress days', cls:s.stressDays>0?'red':''},
     yieldTile
   ].map(t=>`<div class="dp-tile ${t.cls||''}" ${t.title?`title="${esc(t.title)}"`:''}><div class="dp-tile-val">${t.v}</div><div class="dp-tile-lbl">${t.l}</div></div>`).join('');
-
-  // "Apply recommended" shortcut — only when today is actually due (level 'red' with
-  // a positive recommended amount) and nothing has been logged for today yet.
-  const tStrNow=todayStr();
-  const tRowNow=f._rows.find(r=>r.ds===tStrNow);
-  const applyBtn=document.getElementById('applyRecBtn');
-  if(s.level==='red' && s.recNet>0 && tRowNow && !(tRowNow.irr>0)){
-    applyBtn.style.display='';
-    document.getElementById('applyRecAmt').textContent=s.recNet.toFixed(2)+'″';
-  } else {
-    applyBtn.style.display='none';
-  }
 
   // Transition from placeholder to content view
   document.getElementById('activeFieldPlaceholder').style.display = 'none';
@@ -2774,6 +3200,10 @@ function drawDetailCharts(f){
   const clrBlu=cssVar('--blu'), clrRed=cssVar('--red'), clrGrn=cssVar('--grn'),
         clrTeal=cssVar('--teal'), clrAmb=cssVar('--amb');
   const fontFamily='-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif';
+  // On a phone the legend labels wrap to two rows and overlap the plot, and the
+  // wide axis margins leave the chart near-square. Shorten the labels and trim
+  // the margins so it reads as a landscape time-series in portrait.
+  const narrow = window.innerWidth <= 600;
 
   const data=[
     // Invisible fill boundary at the MAD line — bounds the green "OK" zone (0 -> MAD).
@@ -2786,13 +3216,13 @@ function drawDetailCharts(f){
     {x, y:madDep, name:`${f._sim.mad}% MAD`, type:'scatter', mode:'lines',
      line:{color:clrRed, width:1.5, dash:'dash'}, hovertemplate:'MAD: %{y:.2f} in<extra></extra>'},
     // Actual soil water depletion — the main line.
-    {x, y:dep, name:'Depletion (in)', type:'scatter', mode:'lines',
+    {x, y:dep, name:narrow?'Depletion':'Depletion (in)', type:'scatter', mode:'lines',
      line:{color:clrBlu, width:2.5, shape:'spline', smoothing:0.3},
      hovertemplate:'Depletion: %{y:.2f} in<extra></extra>'},
     // Rain / irrigation on the secondary axis.
-    {x, y:rain, name:'Rain (in)', type:'bar', yaxis:'y2', marker:{color:hexToRgba(clrTeal,0.8)},
+    {x, y:rain, name:narrow?'Rain':'Rain (in)', type:'bar', yaxis:'y2', marker:{color:hexToRgba(clrTeal,0.8)},
      hovertemplate:'Rain: %{y:.2f} in<extra></extra>'},
-    {x, y:irr, name:'Irrig. applied (in)', type:'bar', yaxis:'y2', marker:{color:hexToRgba(clrAmb,0.85)},
+    {x, y:irr, name:narrow?'Irrig.':'Irrig. applied (in)', type:'bar', yaxis:'y2', marker:{color:hexToRgba(clrAmb,0.85)},
      hovertemplate:'Irrigation: %{y:.2f} in<extra></extra>'},
   ];
 
@@ -2803,17 +3233,24 @@ function drawDetailCharts(f){
     annotations.push({x:tStr, y:1, yref:'paper', yanchor:'bottom', showarrow:false,
       text:'Today', font:{color:clrMut, size:10, family:fontFamily}});
   }
+  // Measured soil-water anchor marker — shows where the model was re-anchored.
+  if(f.anchor && f.anchor.date>=rows[0].ds && f.anchor.date<=rows[rows.length-1].ds){
+    shapes.push({type:'line', x0:f.anchor.date, x1:f.anchor.date, yref:'paper', y0:0, y1:1,
+      line:{color:clrTeal, width:1.5, dash:'dot'}});
+    annotations.push({x:f.anchor.date, y:1, yref:'paper', yanchor:'bottom', showarrow:false,
+      text:'📍 measured', font:{color:clrTeal, size:9.5, family:fontFamily}});
+  }
 
   const layout={
     paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
     font:{color:clrTxt, size:11, family:fontFamily},
-    margin:{l:52, r:52, t:34, b:34},
+    margin: narrow ? {l:46, r:44, t:50, b:28} : {l:52, r:52, t:34, b:34},
     barmode:'group',
     hovermode:'x unified',
     // Plotly's legend has its own default white background swatch, independent of
     // paper_bgcolor — without this it stays white/light in dark mode regardless of theme,
     // which is exactly what made the (correctly-colored) muted text unreadable against it.
-    legend:{orientation:'h', y:1.16, x:0, font:{color:clrTxt, size:10.5},
+    legend:{orientation:'h', y:narrow?1.02:1.16, yanchor:'bottom', x:0, font:{color:clrTxt, size:narrow?9.5:10.5},
       bgcolor:clrSllt, bordercolor:clrBdr, borderwidth:1},
     xaxis:{type:'date', showgrid:false, tickfont:{color:clrMut, size:10}, tickformat:'%b %d'},
     yaxis:{title:{text:'Depletion (in)', font:{color:clrMut, size:10.5}},
@@ -2935,6 +3372,1033 @@ function commitImport(fresh, dup, overwrite, importedRainOverrides, importedIrri
 }
 
 // ════════════════════════════════════════════════════════════
+//  SOIL WATER ANCHOR — one measured value (probe, sensor, or the
+//  feel method) that re-initializes the balance on its date. Lives
+//  on the field as f.anchor = {date, kind:'taw'|'vwc'|'in', value},
+//  so it exports, imports, and folder-syncs with everything else.
+// ════════════════════════════════════════════════════════════
+let anchorKind='taw';
+const ANCHOR_LABELS={taw:'Soil water (% of total available water)',
+  vwc:'Volumetric water content (%)', in:'Root-zone storage (inches of water)'};
+
+document.getElementById('anchorSeg').addEventListener('click',e=>{
+  if(!e.target.dataset.k) return;
+  anchorKind=e.target.dataset.k;
+  [...document.querySelectorAll('#anchorSeg button')].forEach(b=>b.classList.toggle('on',b.dataset.k===anchorKind));
+  document.getElementById('anchorValLbl').textContent=ANCHOR_LABELS[anchorKind];
+  updateAnchorHint();
+});
+
+// Convert a measurement to root-zone storage (inches) given that day's
+// layer properties. Clamped to [0, FC] like the balance itself.
+function anchorStorage(anchor, WP_in, FC_in, PAW, Zcur){
+  const v=+anchor.value;
+  if(anchor.kind==='vwc') return Math.max(0, Math.min(FC_in, (v/100)*Zcur));
+  if(anchor.kind==='in')  return Math.max(0, Math.min(FC_in, v));
+  return WP_in + Math.max(0,Math.min(1,v/100))*PAW;   // % TAW
+}
+
+function openAnchorModal(){
+  const f=state.fields.find(x=>x.id===state.activeId); if(!f) return;
+  const a=f.anchor;
+  anchorKind=a?a.kind:'taw';
+  [...document.querySelectorAll('#anchorSeg button')].forEach(b=>b.classList.toggle('on',b.dataset.k===anchorKind));
+  document.getElementById('anchorValLbl').textContent=ANCHOR_LABELS[anchorKind];
+  const dEl=document.getElementById('anchorDate');
+  dEl.value=a?a.date:todayStr();
+  dEl.min=f.plantingDate; dEl.max=todayStr();
+  document.getElementById('anchorVal').value=a?a.value:'';
+  document.getElementById('anchorClearBtn').style.display=a?'':'none';
+  updateAnchorHint();
+  document.getElementById('anchorModal').style.display='flex';
+}
+function closeAnchorModal(){ document.getElementById('anchorModal').style.display='none'; }
+
+function updateAnchorHint(){
+  const el=document.getElementById('anchorHint');
+  const f=state.fields.find(x=>x.id===state.activeId);
+  if(!f){ el.textContent=''; return; }
+  const ds=document.getElementById('anchorDate').value;
+  const v=parseFloat(document.getElementById('anchorVal').value);
+  const row=(f._rows||[]).find(r=>r.ds===ds && !r.fut);
+  if(!row){ el.textContent='Pick a date between planting and today.'; return; }
+  const modelPct=Math.round(row.FAW*100);
+  if(isNaN(v)){ el.innerHTML=`Model currently estimates <b>${modelPct}% TAW</b> on ${ds}.`; return; }
+  const S=anchorStorage({kind:anchorKind, value:v}, row.WP_in, row.FC_in, row.PAW, row.Zr);
+  const pct=Math.round(Math.max(0,Math.min(1,(S-row.WP_in)/(row.PAW+1e-9)))*100);
+  el.innerHTML=`Your measurement ≈ <b>${pct}% TAW</b> · model estimated <b>${modelPct}% TAW</b> on ${ds}. Saving re-runs the balance from your value.`;
+}
+
+function saveAnchor(){
+  const f=state.fields.find(x=>x.id===state.activeId); if(!f) return;
+  const ds=document.getElementById('anchorDate').value;
+  const v=parseFloat(document.getElementById('anchorVal').value);
+  if(!ds || ds<f.plantingDate || ds>todayStr()){ showToast('Pick a date between planting and today'); return; }
+  if(isNaN(v) || v<0){ showToast('Enter the measured value first'); return; }
+  if(anchorKind!=='in' && v>100){ showToast('Percent values can’t exceed 100'); return; }
+  f.anchor={date:ds, kind:anchorKind, value:+v};
+  saveFields();
+  resimulateField(f.id);
+  renderMap(); renderList(); renderChips();
+  closeAnchorModal();
+  openDetail(f.id, dShowAll);
+  showToast('📍 Model anchored to your measurement');
+}
+function clearAnchor(){
+  const f=state.fields.find(x=>x.id===state.activeId); if(!f) return;
+  delete f.anchor;
+  saveFields(); resimulateField(f.id);
+  renderMap(); renderList(); renderChips();
+  closeAnchorModal(); openDetail(f.id, dShowAll);
+  showToast('Anchor removed — back to the weather-only balance');
+}
+
+// ════════════════════════════════════════════════════════════
+//  BULK BOUNDARY IMPORT — a GeoJSON or KML file with many field
+//  boundaries; one modal to match each boundary to a crop. Soil is
+//  auto-detected per field, everything else comes from the user's
+//  usual defaults and stays editable per field afterwards.
+// ════════════════════════════════════════════════════════════
+let _bulkFields=null;
+const BULK_SKIP='__skip';
+const escA = s => esc(s).replace(/"/g,'&quot;');   // attribute-safe escape
+
+function triggerBoundaryImport(){ document.getElementById('boundaryFileInput').click(); }
+
+function _bulkRings(geom){   // -> array of outer rings, [lng,lat] pairs
+  if(!geom) return [];
+  if(geom.type==='Polygon') return [geom.coordinates[0]];
+  if(geom.type==='MultiPolygon') return geom.coordinates.map(p=>p[0]);
+  if(geom.type==='GeometryCollection') return (geom.geometries||[]).flatMap(_bulkRings);
+  return [];
+}
+function _bulkNameOf(props, i){
+  const keys=['name','Name','NAME','field','Field','FIELD','field_name','FieldName','label','Label','title','id'];
+  for(const k of keys){ if(props && props[k]!=null && String(props[k]).trim()) return String(props[k]).trim(); }
+  return `Imported field ${i+1}`;
+}
+function parseGeoJSONBoundaries(text){
+  const gj=JSON.parse(text);
+  const feats=gj.type==='FeatureCollection'?(gj.features||[])
+    :(gj.type==='Feature'?[gj]:[{type:'Feature',geometry:gj,properties:{}}]);
+  const out=[];
+  feats.forEach(ft=>{
+    _bulkRings(ft.geometry).forEach(ring=>{
+      const latlngs=ring.map(c=>[+(+c[1]).toFixed(6),+(+c[0]).toFixed(6)]);
+      out.push({name:_bulkNameOf(ft.properties,out.length), latlngs});
+    });
+  });
+  return out;
+}
+function parseKMLBoundaries(text){
+  const doc=new DOMParser().parseFromString(text,'text/xml');
+  if(doc.querySelector('parsererror')) throw new Error('Invalid KML');
+  const out=[];
+  doc.querySelectorAll('Placemark').forEach(pm=>{
+    const nameEl=pm.querySelector('name');
+    const name=(nameEl&&nameEl.textContent.trim())||`Imported field ${out.length+1}`;
+    pm.querySelectorAll('Polygon').forEach(poly=>{
+      const co=poly.querySelector('outerBoundaryIs coordinates');
+      if(!co) return;
+      const latlngs=co.textContent.trim().split(/\s+/).map(tok=>{
+        const [lng,lat]=tok.split(',').map(Number);
+        return [+(+lat).toFixed(6), +(+lng).toFixed(6)];
+      }).filter(p=>isFinite(p[0])&&isFinite(p[1]));
+      if(latlngs.length>=3) out.push({name, latlngs});
+    });
+  });
+  return out;
+}
+
+function handleBoundaryFile(e){
+  const file=e.target.files[0]; e.target.value='';
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    let raw;
+    try{
+      raw = /\.kml$/i.test(file.name) ? parseKMLBoundaries(reader.result)
+          : parseGeoJSONBoundaries(reader.result);
+    }catch(err){ showToast('⚠ Could not read boundaries — use a GeoJSON or KML file'); return; }
+    let tooBig=0;
+    const items=[];
+    raw.forEach(b=>{
+      let ll=b.latlngs;
+      // drop a duplicated closing vertex (standard in both formats)
+      if(ll.length>3 && ll[0][0]===ll[ll.length-1][0] && ll[0][1]===ll[ll.length-1][1]) ll=ll.slice(0,-1);
+      if(ll.length<3) return;
+      const m=polygonMetrics(ll);
+      if(m.areaAc>MAX_AREA_AC){ tooBig++; return; }
+      items.push({name:b.name, latlngs:ll, areaAc:+m.areaAc.toFixed(1), centroid:m.centroid});
+    });
+    if(!items.length){
+      showToast(tooBig?`⚠ All boundaries exceed the ${MAX_AREA_AC} ac limit`:'⚠ No polygon boundaries found in that file');
+      return;
+    }
+    if(tooBig) showToast(`⚠ Skipped ${tooBig} boundar${tooBig>1?'ies':'y'} over ${MAX_AREA_AC} ac`,4500);
+    openBulkModal(items);
+  };
+  reader.onerror=()=>showToast('⚠ Could not read that file');
+  reader.readAsText(file);
+}
+
+function _bulkCropOptions(sel){
+  return `<option value="${BULK_SKIP}">— Fallow / skip —</option>`+
+    Object.entries(CROPS).map(([k,v])=>`<option value="${k}" ${k===sel?'selected':''}>${v.name}</option>`).join('');
+}
+const _bulkDefaultPlant = cropKey => `${new Date().getFullYear()}-${CROPS[cropKey].plantMonthDay}`;
+
+function openBulkModal(items){
+  _bulkFields=items;
+  const d=state.defaults||{};
+  const defCrop=CROPS[d.crop]?d.crop:'corn';
+  document.getElementById('bulkAllCrop').innerHTML='<option value="">— choose —</option>'+
+    `<option value="${BULK_SKIP}">Fallow / skip</option>`+
+    Object.entries(CROPS).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');
+  document.getElementById('bulkTbody').innerHTML=items.map((b,i)=>`<tr>
+    <td><input type="text" id="bkName${i}" value="${escA(b.name)}"></td>
+    <td style="text-align:right;">${b.areaAc.toFixed(1)}</td>
+    <td><select id="bkCrop${i}" onchange="bulkCropChanged(${i})">${_bulkCropOptions(defCrop)}</select></td>
+    <td><input type="date" id="bkPlant${i}" value="${_bulkDefaultPlant(defCrop)}" max="${todayStr()}"></td>
+    <td style="text-align:center;"><input type="checkbox" id="bkDry${i}"></td>
+  </tr>`).join('');
+  bulkUpdateCount();
+  document.getElementById('bulkModal').style.display='flex';
+}
+function bulkCropChanged(i){
+  const sel=document.getElementById('bkCrop'+i);
+  const skip=sel.value===BULK_SKIP;
+  document.getElementById('bkPlant'+i).disabled=skip;
+  document.getElementById('bkDry'+i).disabled=skip;
+  sel.closest('tr').style.opacity=skip?0.45:1;
+  if(!skip) document.getElementById('bkPlant'+i).value=_bulkDefaultPlant(sel.value);
+  bulkUpdateCount();
+}
+function bulkSetAllCrop(k){
+  if(!k||!_bulkFields) return;
+  _bulkFields.forEach((b,i)=>{ document.getElementById('bkCrop'+i).value=k; bulkCropChanged(i); });
+  document.getElementById('bulkAllCrop').value='';
+}
+function bulkUpdateCount(){
+  if(!_bulkFields) return;
+  const n=_bulkFields.filter((b,i)=>document.getElementById('bkCrop'+i).value!==BULK_SKIP).length;
+  document.getElementById('bulkCount').textContent=`${n} of ${_bulkFields.length} will be added`;
+  const btn=document.getElementById('bulkAddBtn');
+  btn.disabled=n===0;
+  btn.textContent=`Add ${n} field${n!==1?'s':''}`;
+}
+function closeBulkModal(){ document.getElementById('bulkModal').style.display='none'; _bulkFields=null; }
+
+function commitBulkImport(){
+  if(!_bulkFields) return;
+  const d = state.defaults || { soil:'siltLoam', irrMode:'hybrid', mad:50, fixedDepth:1.0, eff:85,
+    initWater:75, rdMode:'dynamic', system:'pivotLepa', capValue:800, capUnit:'gpm',
+    allocLimit:0, skipRain:false, skipRainProb:60, skipRainDays:2 };
+  const usedNames=new Set(state.fields.map(f=>f.name.trim().toLowerCase()));
+  const tStr=todayStr();
+  let added=0, plantSkipped=0;
+  _bulkFields.forEach((b,i)=>{
+    const crop=document.getElementById('bkCrop'+i).value;
+    if(crop===BULK_SKIP) return;
+    const plant=document.getElementById('bkPlant'+i).value;
+    if(!plant || plant>tStr){ plantSkipped++; return; }
+    let name=(document.getElementById('bkName'+i).value.trim()||b.name).slice(0,80);
+    let n=name, k=2;
+    while(usedNames.has(n.trim().toLowerCase())){ n=`${name} (${k++})`; }
+    name=n; usedNames.add(name.trim().toLowerCase());
+    const dry=document.getElementById('bkDry'+i).checked;
+    const autoSoil=lookupSoilTexture(b.centroid.lat, b.centroid.lng);
+    state.fields.push({
+      id:uid(b.centroid), shape:'polygon', polygon:b.latlngs, centroid:b.centroid, areaAc:b.areaAc,
+      name, crop, plantingDate:plant,
+      soil:(autoSoil&&SOILS[autoSoil])?autoSoil:(SOILS[d.soil]?d.soil:'siltLoam'),
+      // The Rainfed checkbox is authoritative both ways — an unchecked box must
+      // yield an irrigated field even if the workspace defaults are dryland.
+      irrMode:dry?'none':((d.irrMode&&d.irrMode!=='none')?d.irrMode:'hybrid'), mad:d.mad??50, fixedDepth:d.fixedDepth??1.0,
+      eff:d.eff??85, initWater:d.initWater??75, rootDepth:CROPS[crop].root, rdMode:d.rdMode||'dynamic',
+      system:d.system||'pivotLepa', capValue:d.capValue??800, capUnit:d.capUnit||'gpm',
+      allocLimit:d.allocLimit??0, skipRain:!!d.skipRain,
+      skipRainProb:d.skipRainProb??60, skipRainDays:d.skipRainDays??2,
+    });
+    added++;
+  });
+  closeBulkModal();
+  if(plantSkipped) showToast(`⚠ ${plantSkipped} field(s) skipped — planting date missing or in the future`,4500);
+  if(!added){ if(!plantSkipped) showToast('Nothing selected to add'); return; }
+  saveFields();
+  renderMap(); renderList(); renderChips();
+  try{ if(state.group.getLayers().length) state.map.fitBounds(state.group.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){}
+  showToast(`✓ Added ${added} field${added!==1?'s':''} — fetching weather…`);
+  runAll(false);
+}
+
+// ════════════════════════════════════════════════════════════
+//  MORNING BRIEF + ALERTS — one auto-shown screen per day listing
+//  only the alert-enabled fields that need something (per-field
+//  opt-out lives in field settings). An optional aggregated browser
+//  notification fires at most once per day when the app runs — no
+//  server, so it appears whenever DRIP is opened or refreshed.
+// ════════════════════════════════════════════════════════════
+const LS_BRIEF='irr.briefShown.v1', LS_NOTIF='irr.notified.v1';
+const fieldAlertsOn = f => f.alerts!==false;   // default on; mute is the exception
+
+function briefItems(){
+  return state.fields
+    .filter(f=>fieldAlertsOn(f) && f._sim && (f._sim.level==='red'||f._sim.level==='amb'))
+    .sort((a,b)=>urgencyRank[a._sim.level]-urgencyRank[b._sim.level]);
+}
+
+function openBrief(){
+  const items=briefItems();
+  const muted=state.fields.filter(f=>!fieldAlertsOn(f) && f._sim && (f._sim.level==='red'||f._sim.level==='amb')).length;
+  document.getElementById('briefDate').textContent=
+    new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const body=document.getElementById('briefBody');
+  if(!state.fields.length){
+    body.innerHTML='<div class="brief-empty">No fields yet — draw one on the map, or import boundaries from the ⋯ menu.</div>';
+  } else if(!items.length){
+    body.innerHTML='<div class="brief-empty">✅ Nothing needs attention today.</div>';
+  } else {
+    body.innerHTML=items.map(f=>{
+      const s=f._sim;
+      const act = s.level==='red'
+        ? (s.recNet>0?`Irrigate ${s.recNet.toFixed(2)}″`:s.label)
+        : (s.daysToMad!=null?`MAD in ${s.daysToMad}d`:s.label);
+      return `<div class="brief-row" onclick="closeBrief();openDetail('${f.id}')">
+        <span class="brief-dot" style="background:${LEVEL_COLOR[s.level]}"></span>
+        <div class="brief-main">
+          <div class="brief-name">${esc(f.name)}</div>
+          <div class="brief-sub">${esc(CROPS[f.crop].name)}${s.todayFAW!=null?` · ${Math.round(s.todayFAW*100)}% TAW`:''}</div>
+        </div>
+        <span class="brief-act ${s.level}">${esc(act)}</span>
+      </div>`;
+    }).join('');
+  }
+  if(muted && state.fields.length){
+    body.innerHTML+=`<div class="brief-empty" style="padding:12px 6px 2px;font-size:12.5px;">${muted} muted field${muted>1?'s':''} also need${muted>1?'':'s'} attention (alerts off in field settings).</div>`;
+  }
+  const nb=document.getElementById('notifBtn');
+  nb.style.display=('Notification' in window && Notification.permission==='default')?'':'none';
+  document.getElementById('briefModal').style.display='flex';
+}
+function closeBrief(){ document.getElementById('briefModal').style.display='none'; }
+
+// Auto-open once per day, only when something actually needs attention —
+// a quiet season never interrupts anyone.
+function maybeAutoBrief(){
+  const t=todayStr();
+  if(localStorage.getItem(LS_BRIEF)===t) return;
+  if(!briefItems().length) return;
+  localStorage.setItem(LS_BRIEF,t);
+  openBrief();
+}
+
+async function enableNotifications(){
+  if(!('Notification' in window)) return;
+  const perm=await Notification.requestPermission();
+  document.getElementById('notifBtn').style.display='none';
+  if(perm==='granted'){
+    showToast('🔔 Notifications on — you’ll get a heads-up when fields need water');
+    maybeNotify();
+  }
+}
+
+// One aggregated notification per day, only for fields actually due (red).
+function maybeNotify(){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  const t=todayStr();
+  if(localStorage.getItem(LS_NOTIF)===t) return;
+  const due=briefItems().filter(f=>f._sim.level==='red');
+  if(!due.length) return;
+  localStorage.setItem(LS_NOTIF,t);
+  const names=due.slice(0,4).map(f=>f.name).join(', ')+(due.length>4?` +${due.length-4} more`:'');
+  try{ new Notification('DRIP — irrigation due today',
+    {body:`${due.length} field${due.length>1?'s':''}: ${names}`, icon:'icon-192.png'}); }catch(e){}
+}
+
+// ════════════════════════════════════════════════════════════
+//  SMART ASSISTANT — Gemini Flash turns typed or spoken
+//  instructions into structured edit actions. The response is
+//  schema-constrained JSON; everything is validated against
+//  CROPS/SOILS/limits here and rendered as a proposal the user
+//  must confirm. Requires connectivity (the key is HTTP-referrer
+//  restricted server-side by Google; users can paste their own).
+// ════════════════════════════════════════════════════════════
+// ── ASSISTANT: deterministic parser first, on-device model (WebLLM/WebGPU) as fallback ──
+// assistRules() handles everyday commands instantly in any browser and only answers when it
+// consumed the whole instruction. Anything else goes to a small open model whose output is
+// grammar-constrained to ASSIST_SCHEMA. Downstream (validate → confirm → apply) is shared.
+let _assistPending=null, _assistBusy=false;
+const WEBGPU_SUPPORTED = !!navigator.gpu;
+// navigator.gpu can exist without a usable adapter — probe once.
+let _gpuOk=null;
+async function webgpuProbe(){
+  if(_gpuOk!==null) return _gpuOk;
+  if(!WEBGPU_SUPPORTED) return (_gpuOk=false);
+  try{ _gpuOk=!!(await navigator.gpu.requestAdapter()); }catch(e){ _gpuOk=false; }
+  return _gpuOk;
+}
+const WEBLLM_URL='https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.84/+esm';
+const LS_LLM_MODEL='drip_llm_model';
+
+// Prebuilt MLC models, in fallback order; the first that loads on this device is remembered.
+const LLM_MODELS=[
+  {id:'Qwen2.5-1.5B-Instruct-q4f16_1-MLC'},   // ≈1 GB download
+  {id:'Qwen2.5-0.5B-Instruct-q4f16_1-MLC'},   // ≈350 MB download
+];
+function llmModelId(){ const s=localStorage.getItem(LS_LLM_MODEL); return LLM_MODELS.some(m=>m.id===s)?s:LLM_MODELS[0].id; }
+// Try the preferred model, then each fallback; remember whichever works.
+async function llmLoadAny(onProgress){
+  const start=LLM_MODELS.findIndex(m=>m.id===llmModelId());
+  let lastErr=null;
+  for(let i=start;i<LLM_MODELS.length;i++){
+    localStorage.setItem(LS_LLM_MODEL, LLM_MODELS[i].id);
+    try{
+      await llmPrefetch(onProgress);
+      const eng=await llmEngine(r=>{ if(onProgress) onProgress({text:assistProgressText(r), progress:r.progress}); });
+      return eng;
+    }catch(e){
+      console.warn('AI assistant: model failed, trying next', LLM_MODELS[i].id, e);
+      lastErr=e;
+      if(/abort/i.test(String(e&&e.name))) break;
+    }
+  }
+  localStorage.removeItem(LS_LLM_MODEL);
+  throw lastErr||new Error('No model could be loaded');
+}
+
+// Response schema for the model (compiled to a token grammar by WebLLM; costs no context).
+const ASSIST_SCHEMA={
+  type:'object',
+  properties:{ actions:{ type:'array', items:{
+    type:'object',
+    properties:{
+      field:{type:'string'},
+      set:{ type:'object', properties:{
+        crop:{type:'string'}, plantingDate:{type:'string'}, initWater:{type:'number'},
+        mad:{type:'number'}, soil:{type:'string'}, irrMode:{type:'string'},
+        eff:{type:'number'}, fixedDepth:{type:'number'}, rootDepth:{type:'number'},
+        alerts:{type:'boolean'}, name:{type:'string'} }, additionalProperties:false },
+      logIrrigation:{ type:'object', properties:{date:{type:'string'}, inches:{type:'number'}}, required:['date','inches'], additionalProperties:false },
+      logRain:{ type:'object', properties:{date:{type:'string'}, inches:{type:'number'}}, required:['date','inches'], additionalProperties:false },
+      anchor:{ type:'object', properties:{date:{type:'string'}, kind:{type:'string'}, value:{type:'number'}}, required:['date','kind','value'], additionalProperties:false }
+    },
+    required:['field'], additionalProperties:false
+  }}},
+  required:['actions'], additionalProperties:false
+};
+
+// ── stage 2: WebLLM engine ───────────────────────────────────
+let _llmLib=null, _llm=null, _llmId=null, _llmLoading=null;
+async function llmLib(){ if(!_llmLib) _llmLib=await import(WEBLLM_URL); return _llmLib; }
+async function llmCached(id){
+  try{ const w=await llmLib(); return await w.hasModelInCache(id||llmModelId()); }catch(e){ return false; }
+}
+// Module worker for the engine so prefill never freezes the map; null → main thread.
+function llmMakeWorker(){
+  return new Promise(resolve=>{
+    let worker=null, done=false;
+    const finish=w=>{ if(done) return; done=true; resolve(w); };
+    try{
+      const src=`import * as w from "${WEBLLM_URL}";\nconst h=new w.WebWorkerMLCEngineHandler();\nself.onmessage=m=>h.onmessage(m);\nself.postMessage({kind:'drip-worker-ready'});`;
+      worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})),{type:'module'});
+      const onMsg=e=>{ if(e.data&&e.data.kind==='drip-worker-ready'){ worker.removeEventListener('message',onMsg); finish(worker); } };
+      worker.addEventListener('message',onMsg);
+      worker.onerror=e=>{ console.warn('WebLLM worker failed:', e.message||e); try{ worker.terminate(); }catch(_){ } finish(null); };
+      setTimeout(()=>{ if(!done){ console.warn('WebLLM worker timed out'); try{ worker.terminate(); }catch(_){ } finish(null); } }, 15000);
+    }catch(e){ console.warn('WebLLM worker unavailable:', e); finish(null); }
+  });
+}
+async function llmEngine(onProgress){
+  const id=llmModelId();
+  if(_llm && _llmId===id) return _llm;
+  if(_llmLoading) return _llmLoading;
+  _llmLoading=(async()=>{
+    const w=await llmLib();
+    if(_llm){ try{ await _llm.unload(); }catch(e){} _llm=null; _llmId=null; }
+    try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+    const opts={ initProgressCallback:r=>{ if(onProgress) onProgress(r); } };
+    const worker=await llmMakeWorker();
+    const eng= worker ? await w.CreateWebWorkerMLCEngine(worker, id, opts) : await w.CreateMLCEngine(id, opts);
+    _llm=eng; _llmId=id; return eng;
+  })();
+  try{ return await _llmLoading; } finally{ _llmLoading=null; }
+}
+// One turn: system prompt + instruction in, schema-constrained JSON out.
+async function assistLLM(system, user, onProgress){
+  const engine=await llmEngine(onProgress);
+  const req={
+    messages:[{role:'system',content:system},{role:'user',content:user}],
+    temperature:0, max_tokens:512,
+    response_format:{type:'json_object', schema:JSON.stringify(ASSIST_SCHEMA)}
+  };
+  const res=await engine.chat.completions.create(req);
+  return (res.choices&&res.choices[0]&&res.choices[0].message&&res.choices[0].message.content)||'';
+}
+// ── resilient prefetch ──
+// WebLLM's own download aborts on the first dropped connection, so fill its caches
+// first (same scope names and URL keys), a few files at a time with retries.
+const LLM_FETCH_CONCURRENCY=3, LLM_FETCH_RETRIES=5;
+function llmModelBase(rec){ let u=rec.model; u+=u.endsWith('/')?'':'/'; if(!/.+\/resolve\/.+\//.test(u)) u+='resolve/main/'; return new URL(u).href; }
+async function llmFetchInto(scope, url, onBytes, signal){
+  const cache=await caches.open(scope);
+  if(await cache.match(new Request(url))) return 'cached';
+  let lastErr=null;
+  for(let attempt=0; attempt<LLM_FETCH_RETRIES; attempt++){
+    try{
+      const res=await fetch(url,{signal, cache:'no-store'});
+      if(!res.ok) throw new Error(`HTTP ${res.status} for ${url.split('/').pop()}`);
+      // Read fully first so a mid-stream drop never leaves a truncated entry.
+      const buf=await res.arrayBuffer();
+      const headers=new Headers(); const ct=res.headers.get('content-type'); if(ct) headers.set('content-type',ct);
+      headers.set('content-length', String(buf.byteLength));
+      await cache.put(new Request(url), new Response(buf,{status:200, headers}));
+      if(onBytes) onBytes(buf.byteLength);
+      return 'fetched';
+    }catch(e){
+      lastErr=e; if(signal&&signal.aborted) throw e;
+      if(/HTTP 4\d\d/.test(String(e.message))) throw e;   // not going to fix itself
+      await new Promise(r=>setTimeout(r, 800*Math.pow(2,attempt)));
+    }
+  }
+  throw lastErr||new Error('download failed');
+}
+async function llmPrefetch(onProgress, signal){
+  const w=await llmLib();
+  const id=llmModelId();
+  const rec=(w.prebuiltAppConfig.model_list||[]).find(m=>m.model_id===id);
+  if(!rec) throw new Error('Unknown model '+id);
+  const base=llmModelBase(rec);
+  const say=(t,p)=>{ if(onProgress) onProgress({text:t, progress:p}); };
+  say('Fetching model manifest…',0);
+  await llmFetchInto('webllm/config', new URL('mlc-chat-config.json',base).href, null, signal);
+  await llmFetchInto('webllm/wasm', rec.model_lib, null, signal);
+  await llmFetchInto('webllm/model', new URL('tensor-cache.json',base).href, null, signal);
+  const cfgRes=await (await caches.open('webllm/config')).match(new URL('mlc-chat-config.json',base).href);
+  const cfg=await cfgRes.json();
+  const manRes=await (await caches.open('webllm/model')).match(new URL('tensor-cache.json',base).href);
+  const man=await manRes.json();
+  const files=[];
+  (cfg.tokenizer_files||[]).forEach(f=>files.push({url:new URL(f,base).href, bytes:0}));
+  (man.records||[]).forEach(r=>files.push({url:new URL(r.dataPath,base).href, bytes:r.nbytes||0}));
+  const total=files.reduce((a,f)=>a+f.bytes,0)||1;
+  // Skip what's already there so a retry resumes instead of restarting.
+  const mc=await caches.open('webllm/model');
+  const todo=[]; let done=0;
+  for(const f of files){ if(await mc.match(new Request(f.url))) done+=f.bytes; else todo.push(f); }
+  say(`Downloading model… ${Math.round(done/total*100)}%`, done/total);
+  let next=0, failed=null;
+  const worker=async()=>{
+    while(next<todo.length && !failed){
+      const f=todo[next++];
+      try{ await llmFetchInto('webllm/model', f.url, n=>{ if(f.bytes) done+=n; const p=Math.min(1,done/total); say(`Downloading model… ${Math.round(p*100)}%`, p); }, signal); }
+      catch(e){ failed=e; }
+    }
+  };
+  await Promise.all(Array.from({length:LLM_FETCH_CONCURRENCY}, worker));
+  if(failed) throw failed;
+  say('Download complete — loading model…',1);
+}
+
+// After a failed download, name the host or condition that is blocking it.
+async function llmDiagnose(){
+  const id=llmModelId();
+  let libUrl=null;
+  try{ const w=await llmLib(); const rec=(w.prebuiltAppConfig.model_list||[]).find(m=>m.model_id===id); libUrl=rec&&rec.model_lib; }catch(_){ }
+  const probes=[
+    ['WebLLM library (cdn.jsdelivr.net)', WEBLLM_URL],
+    ['Model runtime (raw.githubusercontent.com)', libUrl||'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/README.md'],
+    ['Model files (huggingface.co)', `https://huggingface.co/mlc-ai/${id}/resolve/main/mlc-chat-config.json`],
+    ['Model weights CDN (cdn.hf.co via redirect)', `https://huggingface.co/mlc-ai/${id}/resolve/main/params_shard_0.bin`],
+  ];
+  const out=[];
+  if(location.protocol==='file:') out.push('Page opened as a file:// URL — the browser cache the model needs is disabled there. Serve the folder over http(s) instead.');
+  if(typeof caches==='undefined') out.push('Cache API unavailable in this context (private window or storage blocked?).');
+  for(const [label,url] of probes){
+    try{
+      const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),12000);
+      const r=await fetch(url,{signal:ctrl.signal, headers:{Range:'bytes=0-0'}});
+      clearTimeout(t);
+      if(!r.ok && r.status!==206) out.push(`${label}: HTTP ${r.status}`);
+      else{ try{ if(r.body) await r.body.cancel(); }catch(_){ } }
+    }catch(e){ out.push(`${label}: blocked or unreachable (${e.name})`); }
+  }
+  try{ const est=await navigator.storage.estimate(); const free=(est.quota-est.usage)/1048576; if(free<2500) out.push(`Only ${Math.round(free)} MB of browser storage available.`); }catch(_){ }
+  return out;
+}
+// Short status line from WebLLM's verbose progress text.
+function assistProgressText(r){
+  const p=Math.round((r&&r.progress||0)*100), t=String(r&&r.text||'');
+  if(/finish/i.test(t)) return 'On-device model ready · no key, no network';
+  if(/shader|compil/i.test(t)) return `Compiling for your GPU… ${p}%`;
+  if(/fetch|download/i.test(t)) return `Downloading model… ${p}%`;
+  return `Loading model… ${p}%`;
+}
+
+function extractJson(t){
+  if(!t) return t;
+  let s=String(t).trim();
+  s=s.replace(/<think>[\s\S]*?<\/think>/g,'').trim();
+  const fence=s.match(/```(?:json)?\s*([\s\S]*?)```/i); if(fence) s=fence[1].trim();
+  const a=s.indexOf('{'), b=s.lastIndexOf('}');
+  if(a>=0 && b>a) s=s.slice(a,b+1);
+  return s;
+}
+
+// Compact prompt: vocabulary, date context, a few rules, three examples (~350 tokens).
+function assistSystemPrompt(){
+  const fields=state.fields.map(f=>f.name).join('; ')||'none';
+  const crops=Object.keys(CROPS).join(',');
+  const soils=Object.keys(SOILS).join(',');
+  const yr=new Date().getFullYear(), yday=isoDate(new Date(Date.now()-86400000));
+  const ex1=state.fields[0]?state.fields[0].name:'North Pivot';
+  return `Turn the instruction into JSON edit actions for irrigation fields.
+today=${todayStr()} year=${yr} yesterday=${yday}
+fields: ${fields}
+crop keys: ${crops}
+soil keys: ${soils}
+set keys: crop, plantingDate(YYYY-MM-DD), initWater(0-100 % of available water at planting), mad(30-70), soil, irrMode(hybrid/fixed/refill/none=rainfed), eff(%), fixedDepth(in), rootDepth(in), alerts(false=mute), name(rename).
+Rules: field is the closest existing name, or "*" for all fields. Include only keys the user stated; never pad with empty values. Dates YYYY-MM-DD; a log without a date means today. logIrrigation = water applied; logRain = rainfall. anchor only when a measured soil water is reported (kind: taw=% of available water, vwc=% volumetric, in=inches). If it is a question or not an edit, return {"actions":[]}.
+Examples:
+"${ex1}: corn planted May 2, initial moisture 60%" -> {"actions":[{"field":"${ex1}","set":{"crop":"corn","plantingDate":"${yr}-05-02","initWater":60}}]}
+"we got 0.4 inches of rain yesterday on every field" -> {"actions":[{"field":"*","logRain":{"date":"${yday}","inches":0.4}}]}
+"probe on ${ex1} read 22% vwc this morning, and mute its alerts" -> {"actions":[{"field":"${ex1}","anchor":{"date":"${todayStr()}","kind":"vwc","value":22},"set":{"alerts":false}}]}`;
+}
+
+// ── stage 1: deterministic parser ──
+// Returns {actions:[...]} in the model's shape, or null when unsure (then the model gets it).
+const _MONTHS=['january','february','march','april','may','june','july','august','september','october','november','december'];
+const _WEEKDAYS=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+const _escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const _dayShift=n=>isoDate(new Date(Date.now()+n*86400000));
+
+// Lower-case, unify units, spell numbers as digits ("half an inch" → 0.5 in).
+function assistNormalize(q){
+  let s=String(q||'').toLowerCase().replace(/[“”"″]/g,'"').replace(/[‘’]/g,"'").replace(/\s+/g,' ').trim();
+  s=s.replace(/\b(\d+)\s+and\s+a\s+half\b/g,(m,a)=>String(+a+0.5))
+     .replace(/\b(\d+)\s+and\s+a\s+quarter\b/g,(m,a)=>String(+a+0.25))
+     .replace(/\b(\d+)\s+and\s+three\s+quarters?\b/g,(m,a)=>String(+a+0.75))
+     .replace(/\ban?\s+inch\s+and\s+a\s+half\b/g,'1.5 in')
+     .replace(/\b(?:a\s+)?half\s+(?:of\s+)?(?:an?\s+)?inch\b/g,'0.5 in')
+     .replace(/\b(?:a\s+)?quarter\s+(?:of\s+)?(?:an?\s+)?inch\b/g,'0.25 in')
+     .replace(/\bthree\s+quarters?\s+(?:of\s+)?(?:an?\s+)?inch\b/g,'0.75 in')
+     .replace(/\b(?:a\s+)?tenth\s+(?:of\s+)?(?:an?\s+)?inch\b/g,'0.1 in')
+     .replace(/\ban\s+inch\b/g,'1 in')
+     .replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten)\s+point\s+(zero|one|two|three|four|five|six|seven|eight|nine)\b/g,(m,a,b)=>`${_wordNum(a)}.${_wordNum(b)}`)
+     .replace(/\b(\d+)\s+point\s+(\d+)\b/g,'$1.$2')
+     .replace(/\bpoint\s+(\d)\b/g,'0.$1')
+     .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b(?=\s*(?:in\b|inch|"|percent|%|days?))/g,(m,a)=>String(_wordNum(a)))
+     .replace(/(\d)\s*(?:%|percent|pct)\b/g,'$1%')
+     .replace(/(\d)\s*(?:inches|inch|in\b|")/g,'$1 in');
+  return s;
+}
+function _wordNum(w){ return ['zero','one','two','three','four','five','six','seven','eight','nine','ten'].indexOf(w); }
+
+// One date expression → {date, re} or null. A future date with no year means last year.
+function assistFindDate(s){
+  const today=new Date(); today.setHours(0,0,0,0);
+  const back=(iso,explicitYear)=>{ if(!explicitYear && iso>todayStr()){ const d=new Date(iso+'T00:00:00'); d.setFullYear(d.getFullYear()-1); return isoDate(d); } return iso; };
+  let m;
+  if((m=s.match(/\b(?:the\s+)?day\s+before\s+yesterday\b/))) return {date:_dayShift(-2), re:m[0]};
+  if((m=s.match(/\byesterday(?:\s+(?:morning|afternoon|evening|night))?\b/))) return {date:_dayShift(-1), re:m[0]};
+  if((m=s.match(/\b(?:today|tonight|this\s+(?:morning|afternoon|evening)|last\s+night)\b/))) return {date:todayStr(), re:m[0]};
+  if((m=s.match(/\b(\d+)\s+days?\s+ago\b/))) return {date:_dayShift(-(+m[1])), re:m[0]};
+  if((m=s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/))) return {date:m[0], re:m[0]};
+  if((m=s.match(/\b(last\s+|on\s+|this\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/))){
+    const idx=_WEEKDAYS.indexOf(m[2]); let diff=(today.getDay()-idx+7)%7;
+    if(diff===0 && /last/.test(m[1]||'')) diff=7;
+    return {date:_dayShift(-diff), re:m[0]};
+  }
+  const mon='(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+  const monIdx=w=>_MONTHS.findIndex(x=>x.startsWith(w.slice(0,3)));
+  if((m=s.match(new RegExp('\\b'+mon+'\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b')))){
+    const y=m[3]?+m[3]:today.getFullYear(), iso=`${y}-${String(monIdx(m[1])+1).padStart(2,'0')}-${String(+m[2]).padStart(2,'0')}`;
+    return {date:back(iso,!!m[3]), re:m[0]};
+  }
+  if((m=s.match(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?'+mon+'\\.?(?:,?\\s+(\\d{4}))?\\b')))){
+    const y=m[3]?+m[3]:today.getFullYear(), iso=`${y}-${String(monIdx(m[2])+1).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`;
+    return {date:back(iso,!!m[3]), re:m[0]};
+  }
+  if((m=s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/))){
+    let y=today.getFullYear(); if(m[3]) y=m[3].length===2?2000+(+m[3]):+m[3];
+    const iso=`${y}-${String(+m[1]).padStart(2,'0')}-${String(+m[2]).padStart(2,'0')}`;
+    return {date:back(iso,!!m[3]), re:m[0]};
+  }
+  if((m=s.match(/\bon\s+the\s+(\d{1,2})(?:st|nd|rd|th)\b/))){
+    const iso=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`;
+    let d=iso; if(d>todayStr()){ const x=new Date(iso+'T00:00:00'); x.setMonth(x.getMonth()-1); d=isoDate(x); }
+    return {date:d, re:m[0]};
+  }
+  return null;
+}
+
+// Fields named in the text → {names|['*'], s} with the mentions blanked. Longest names first.
+function assistFindFields(s){
+  if(/\b(?:all|every|each)\s+(?:of\s+)?(?:the\s+|my\s+)?(?:fields?|pivots?)\b/.test(s) || /\ball\s+of\s+them\b/.test(s)){
+    s=s.replace(/\b(?:all|every|each)\s+(?:of\s+)?(?:the\s+|my\s+)?(?:fields?|pivots?)\b/,' ').replace(/\ball\s+of\s+them\b/,' ');
+    return {names:['*'], s};
+  }
+  const names=[];
+  const cropWords=Object.values(CROPS).map(c=>c.name.toLowerCase()), soilWords=Object.values(SOILS).map(c=>c.name.toLowerCase());
+  const sorted=[...state.fields].sort((a,b)=>b.name.length-a.name.length);
+  for(const f of sorted){
+    const n=f.name.toLowerCase().trim(); if(!n) continue;
+    const re=new RegExp('(^|[^a-z0-9])'+_escRe(n)+'(?![a-z0-9])');
+    if(re.test(s)){ names.push(f.name); s=s.replace(re,'$1 '); continue; }
+    // token form — "the north pivot field" ↔ "North Pivot"
+    const toks=n.split(/[^a-z0-9]+/).filter(t=>t.length>2 && !['field','pivot','the','farm'].includes(t) && !cropWords.includes(t) && !soilWords.includes(t));
+    if(toks.length && toks.every(t=>new RegExp('\\b'+_escRe(t)+'\\b').test(s))){
+      names.push(f.name); toks.forEach(t=>{ s=s.replace(new RegExp('\\b'+_escRe(t)+'\\b'),' '); });
+    }
+  }
+  return {names, s};
+}
+
+function assistRules(q){
+  if(!state.fields.length) return null;
+  let s=assistNormalize(q);
+  const take=re=>{ const m=s.match(re); if(m) s=s.replace(re,' '); return m; };
+
+  // Field(s): "Name: …" prefix, else any field name in the text, else the open field.
+  let names=[];
+  const colon=s.indexOf(':');
+  if(colon>0){
+    const pre=s.slice(0,colon).trim();
+    const m=assistMatchFields(pre);
+    if(m.length){ names=m.map(f=>f.name); s=s.slice(colon+1); }
+  }
+  if(!names.length){ const r=assistFindFields(s); names=r.names; s=r.s; }
+
+  // One date per instruction (applies to every clause in it).
+  const dt=assistFindDate(s); if(dt) s=s.replace(dt.re,' ');
+  const date=dt?dt.date:null;
+
+  const set={}; const act={}; let m;
+
+  // rename (whole-line command; needs exactly one target)
+  if((m=take(/\brename\b(.*?)\b(?:to|as)\s+"?([^"]+?)"?\s*$/))){
+    if(!names.length){ const t=assistMatchFields(m[1].trim()); if(t.length===1) names=[t[0].name]; }
+    if(names.length!==1 || names[0]==='*') return null;
+    set.name=m[2].trim();
+  }
+  // alerts
+  if(take(/\b(?:mute|silence|turn\s+off|disable|stop|pause)\s+(?:the\s+|its\s+|all\s+)?(?:alerts?|notifications?|warnings?)\b/)) set.alerts=false;
+  else if(take(/\b(?:unmute|turn\s+on|enable|resume|re-?enable)\s+(?:the\s+|its\s+|all\s+)?(?:alerts?|notifications?|warnings?)\b/)) set.alerts=true;
+  else if(take(/\b(?:alerts?|notifications?)\s+(?:off|muted)\b/)) set.alerts=false;
+  else if(take(/\b(?:alerts?|notifications?)\s+(?:on|back\s+on)\b/)) set.alerts=true;
+  // irrigation strategy
+  if(take(/\b(?:rain-?\s?fed|dry\s?land|no\s+irrigation|not\s+irrigated|without\s+irrigation)\b/)) set.irrMode='none';
+  if((m=take(/\b(?:strategy|mode|scheduling)\s*(?:to|=|is|:|as)?\s*(hybrid|fixed(?:\s+depth)?|refill)\b/)) || (m=take(/\b(hybrid|fixed(?:\s+depth)?|refill)\s+(?:strategy|mode|scheduling|irrigation)\b/))){
+    set.irrMode=m[1].startsWith('fixed')?'fixed':m[1];
+  }
+  // efficiency
+  if((m=take(/\b(?:efficiency|efficient)\s*(?:to|at|of|is|=|:)?\s*(\d+(?:\.\d+)?)%?/)) || (m=take(/\b(\d+(?:\.\d+)?)%\s*(?:efficiency|efficient)\b/))) set.eff=+m[1];
+  // application depth
+  if((m=take(/\b(?:application|fixed|irrigation|set)\s+depth\s*(?:to|of|at|is|=|:)?\s*(\d+(?:\.\d+)?|\.\d+)\s*(?:in)?\b/)) || (m=take(/\bapply\s+(\d+(?:\.\d+)?|\.\d+)\s*in\s+(?:per|each|every)\b/))) set.fixedDepth=+m[1];
+  // root depth
+  if((m=take(/\broot(?:ing)?\s*(?:zone|depth)\s*(?:to|of|at|is|=|:)?\s*(\d+(?:\.\d+)?|\.\d+)\s*(?:in)?\b/))) set.rootDepth=+m[1];
+  // MAD
+  if((m=take(/\b(?:mad|allowable\s+depletion|management\s+allowed\s+depletion|depletion)\s*(?:to|at|of|is|=|:)?\s*(\d+)%?/)) || (m=take(/\b(\d+)%\s*(?:mad|depletion)\b/))) set.mad=+m[1];
+  // initial moisture (at planting)
+  if((m=take(/\b(?:initial|starting|start)\s+(?:soil\s+)?(?:moisture|water|soil\s+water)(?:\s+(?:content|level))?\s*(?:to|at|of|is|=|:|was)?\s*(\d+(?:\.\d+)?)%?/)) || (m=take(/\b(\d+(?:\.\d+)?)%\s*(?:initial|starting)\s+(?:soil\s+)?(?:moisture|water)\b/))) set.initWater=+m[1];
+  // measured soil water → anchor ("22% vwc" or "probe reads 22 percent")
+  const anchorWords=/\b(?:probe|sensor|reading|measured|measurement|vwc|volumetric(?:\s+water)?|taw|soil\s+(?:water|moisture)|moisture)\b/;
+  if((m=take(/\b(\d+(?:\.\d+)?|\.\d+)\s*(%|in)?\s*(vwc|volumetric|taw|plant\s+available)\b/)) ||
+     (m=take(/\b(?:probe|sensor|reading|measured|measurement|vwc|volumetric(?:\s+water)?|taw|soil\s+(?:water|moisture)|moisture)\b(?:\s+(?:content|reads?|read|is|was|at|of|says?|shows?|measured|=|:|on))*\s*(\d+(?:\.\d+)?|\.\d+)\s*(%|in)?/))){
+    const kind=/vwc|volumetric/.test(m[0])?'vwc':(m[2]==='in'?'in':'taw');
+    act.anchor={date:date||todayStr(), kind, value:+m[1]};
+    s=s.replace(anchorWords,' ').replace(/\b(?:reads?|read|says?|shows?)\b/,' ');   // "probe … read 22% vwc"
+  }
+  // planting date and crop
+  const planted=!!take(/\b(?:plant(?:ed|ing)?|sow(?:ed|n|ing)?|seeded|emerged|emergence|drilled)\b/);
+  const cropRe={corn:/\bcorn\b|\bmaize\b/, soybean:/\bsoy\s?beans?\b|\bbeans\b/, sorghum:/\bsorghum\b|\bmilo\b/, winterWheat:/\bwinter\s+wheat\b|\bwheat\b/, sunflower:/\bsun\s?flowers?\b/};
+  for(const [k,re] of Object.entries(cropRe)){ if(CROPS[k] && take(re)){ set.crop=k; break; } }
+  if(Object.values(cropRe).some(re=>re.test(s))) return null;   // a second crop → per-field values → model
+  if(planted){ if(date) set.plantingDate=date; else if(!set.crop) return null; }
+  // soil texture (longest names first so "silt loam" wins over "loam")
+  const soilEntries=Object.entries(SOILS).sort((a,b)=>b[1].name.length-a[1].name.length);
+  for(const [k,c] of soilEntries){
+    if(take(new RegExp('\\b'+_escRe(c.name.toLowerCase())+'\\b(?:\\s+(?:soil|texture))?'))){ set.soil=k; break; }
+  }
+  if(soilEntries.some(([k,c])=>new RegExp('\\b'+_escRe(c.name.toLowerCase())+'\\b').test(s))) return null;
+  take(/\b(?:soil|texture)\s*(?:is|to|=|:)?\b/);
+  // irrigation / rain logs (an amount with an inch unit is required)
+  const amt=()=>{ const a=take(/\b(\d+(?:\.\d+)?|\.\d+)\s*in\b/); return a?+a[1]:null; };
+  const takeAll=re=>{ const hit=re.test(s); if(hit) s=s.replace(re,' '); return hit; };
+  const irrVerb=takeAll(/\b(?:irrigat\w*|water(?:ed|ing)|applied|apply|put\s+on|ran\s+(?:the\s+)?pivot|pivot\s+ran|pumped|log\s+(?:an?\s+)?irrigation)\b/g);
+  const rainVerb=takeAll(/\b(?:rain\w*|precip\w*|storm\w*|shower\w*|got|received)\b/g);
+  if(irrVerb){ const a=amt(); if(a==null) return null; act.logIrrigation={date:date||todayStr(), inches:a}; }
+  if(rainVerb){ const a=amt(); if(a==null) return null; act.logRain={date:date||todayStr(), inches:a}; }
+
+  if(!Object.keys(set).length && !Object.keys(act).length) return null;
+
+  // Coverage check: anything left that looks meaningful → let the model do it.
+  const rest=s.replace(/\b(?:log|set|change|update|record|enter|add|make|mark|please|the|a|an|of|on|for|to|at|in|with|and|then|its|it|is|was|were|are|be|field|fields|pivot|farm|now|from|by|our|my|we|i|as|so|that|this|there|this|morning|afternoon|last|night|also|too)\b/g,' ')
+    .replace(/[^a-z0-9%]+/g,' ').trim();
+  if(/\d/.test(rest)) return null;
+  if(/\b(?:rename|mute|plant|crop|soil|probe|sensor|alert|strategy|mode|depth|moisture|water|rain|irrigat|efficien|mad|vwc|taw|anchor|delete|remove|import|export|show|open|what|how|when|why|which|should|tomorrow|next)\w*/.test(rest)) return null;
+  if(rest.split(' ').filter(Boolean).length>3) return null;
+
+  if(!names.length){
+    if(state.activeId){ const f=state.fields.find(x=>x.id===state.activeId); if(f) names=[f.name]; }
+    if(!names.length) return null;
+  }
+  if(set.name!==undefined && names.length!==1) return null;
+  const mk=n=>{ const a={field:n}; if(Object.keys(set).length) a.set={...set}; Object.assign(a, act); return a; };
+  return {actions:names.map(mk)};
+}
+
+// ── field/value resolution ───────────────────────────────────
+function assistMatchFields(nameRaw){
+  const n=String(nameRaw||'').trim().toLowerCase();
+  if(!n) return [];
+  if(n==='*'||n==='all'||n==='all fields'||n==='every field') return [...state.fields];
+  let m=state.fields.filter(f=>f.name.toLowerCase()===n);
+  if(!m.length) m=state.fields.filter(f=>f.name.toLowerCase().includes(n)||n.includes(f.name.toLowerCase()));
+  if(!m.length){ // token overlap — "the north field" vs "North Pivot"
+    const toks=n.split(/\s+/).filter(t=>t.length>2);
+    m=state.fields.filter(f=>{ const fn=f.name.toLowerCase(); return toks.some(t=>fn.includes(t)); });
+  }
+  return m;
+}
+function assistCropKey(v){
+  const s=String(v||'').trim().toLowerCase(); if(!s) return null;
+  if(CROPS[v]) return v;
+  for(const [k,c] of Object.entries(CROPS)){ if(k.toLowerCase()===s||c.name.toLowerCase()===s) return k; }
+  for(const [k,c] of Object.entries(CROPS)){ if(c.name.toLowerCase().includes(s)||s.includes(c.name.toLowerCase())) return k; }
+  return null;
+}
+function assistSoilKey(v){
+  const s=String(v||'').trim().toLowerCase(); if(!s) return null;
+  if(SOILS[v]) return v;
+  for(const [k,c] of Object.entries(SOILS)){ if(k.toLowerCase()===s||c.name.toLowerCase()===s) return k; }
+  for(const [k,c] of Object.entries(SOILS)){ if(c.name.toLowerCase()===s.replace(/\s+/g,' ')) return k; }
+  return null;
+}
+const assistDateOk = ds => /^\d{4}-\d{2}-\d{2}$/.test(String(ds||''));
+const _clampV=(v,lo,hi)=>Math.max(lo,Math.min(hi,+v));
+
+// Turn the model's raw actions into concrete, validated operations plus a
+// human-readable summary. Nothing is mutated here.
+function assistValidate(actions){
+  const ops=[], lines=[], warns=[];
+  (actions||[]).forEach(a=>{
+    const targets=assistMatchFields(a.field);
+    if(!targets.length){ warns.push(`No field matches “${esc(String(a.field))}” — skipped.`); return; }
+    const tNames=targets.map(f=>f.name).join(', ');
+    if(a.set && Object.keys(a.set).length){
+      const set={}, parts=[];
+      // Defensive: drop padding the model sometimes adds — empty strings,
+      // nulls, and zero/negative values for fields where 0 is meaningless.
+      const s={...a.set};
+      Object.keys(s).forEach(k=>{
+        if(s[k]===''||s[k]==null) delete s[k];
+        else if(['rootDepth','eff','fixedDepth','mad'].includes(k)&&!(s[k]>0)) delete s[k];
+      });
+      if(s.crop!==undefined){ const k=assistCropKey(s.crop);
+        if(k){ set.crop=k; parts.push(`crop → ${CROPS[k].name}`); } else warns.push(`Unknown crop “${esc(String(s.crop))}” — ignored.`); }
+      if(s.plantingDate!==undefined){ if(assistDateOk(s.plantingDate)&&s.plantingDate<=todayStr()){ set.plantingDate=s.plantingDate; parts.push(`planted ${fmtPlantDate(s.plantingDate)}`); }
+        else warns.push(`Planting date “${esc(String(s.plantingDate))}” invalid or in the future — ignored.`); }
+      if(s.initWater!==undefined){ set.initWater=_clampV(s.initWater,0,100); parts.push(`initial moisture ${set.initWater}% TAW`); }
+      if(s.mad!==undefined){ const snapped=[30,40,50,60,70].reduce((b,x)=>Math.abs(x-s.mad)<Math.abs(b-s.mad)?x:b,50);
+        set.mad=snapped; parts.push(`MAD ${snapped}%`); }
+      if(s.soil!==undefined){ const k=assistSoilKey(s.soil);
+        if(k){ set.soil=k; parts.push(`soil → ${SOILS[k].name}`); } else warns.push(`Unknown soil “${esc(String(s.soil))}” — ignored.`); }
+      if(s.irrMode!==undefined){ const m=String(s.irrMode).toLowerCase();
+        if(['hybrid','fixed','refill','none'].includes(m)){ set.irrMode=m; parts.push(m==='none'?'rainfed (no irrigation)':`strategy → ${m}`); }
+        else warns.push(`Unknown strategy “${esc(String(s.irrMode))}” — ignored.`); }
+      if(s.eff!==undefined){ set.eff=_clampV(s.eff,30,100); parts.push(`efficiency ${set.eff}%`); }
+      if(s.fixedDepth!==undefined){ set.fixedDepth=_clampV(s.fixedDepth,0.1,5); parts.push(`application depth ${set.fixedDepth}″`); }
+      if(s.rootDepth!==undefined){ set.rootDepth=_clampV(s.rootDepth,8,120); parts.push(`root depth ${set.rootDepth}″`); }
+      if(s.alerts!==undefined){ set.alerts=!!s.alerts; parts.push(set.alerts?'alerts on':'alerts muted'); }
+      if(s.name!==undefined && targets.length===1 && String(s.name).trim()){ set.name=String(s.name).trim().slice(0,80); parts.push(`rename → “${esc(set.name)}”`); }
+      if(Object.keys(set).length){ ops.push({type:'set', targets, set}); lines.push({f:tNames, txt:parts.join(' · ')}); }
+    }
+    if(a.logIrrigation){ const L=a.logIrrigation;
+      if(assistDateOk(L.date)&&L.inches>0){ ops.push({type:'irr', targets, date:L.date, inches:+(+L.inches).toFixed(2)});
+        lines.push({f:tNames, txt:`log irrigation ${(+L.inches).toFixed(2)}″ on ${L.date}`}); }
+      else warns.push('Irrigation log needs a valid date and positive inches — skipped.'); }
+    if(a.logRain){ const L=a.logRain;
+      if(assistDateOk(L.date)&&L.inches>=0){ ops.push({type:'rain', targets, date:L.date, inches:+(+L.inches).toFixed(2)});
+        lines.push({f:tNames, txt:`set rain ${(+L.inches).toFixed(2)}″ on ${L.date}`}); }
+      else warns.push('Rain entry needs a valid date and inches — skipped.'); }
+    if(a.anchor){ const A=a.anchor; const kind=['taw','vwc','in'].includes(String(A.kind))?A.kind:'taw';
+      if(assistDateOk(A.date)&&A.date<=todayStr()&&A.value>=0){ ops.push({type:'anchor', targets, date:A.date, kind, value:+A.value});
+        lines.push({f:tNames, txt:`anchor soil water at ${A.value}${kind==='in'?'″':'%'} (${kind}) on ${A.date}`}); }
+      else warns.push('Anchor needs a valid past date and value — skipped.'); }
+  });
+  return {ops, lines, warns};
+}
+
+function assistApply(){
+  if(!_assistPending) return;
+  const {ops}=_assistPending;
+  let touched=new Set();
+  ops.forEach(op=>{
+    op.targets.forEach(f=>{
+      const live=state.fields.find(x=>x.id===f.id); if(!live) return;
+      touched.add(live.id);
+      if(op.type==='set'){
+        // Changing crop invalidates a custom Kc curve and the old root depth —
+        // fall back to the new crop's defaults unless explicitly provided.
+        if(op.set.crop && op.set.crop!==live.crop){ delete live.kc;
+          if(op.set.rootDepth===undefined) live.rootDepth=CROPS[op.set.crop].root; }
+        Object.assign(live, op.set);
+      } else if(op.type==='irr'){
+        if(!irrigationLog[live.id]) irrigationLog[live.id]={};
+        irrigationLog[live.id][op.date]=op.inches;
+      } else if(op.type==='rain'){
+        if(!rainOverrides[live.id]) rainOverrides[live.id]={};
+        rainOverrides[live.id][op.date]=op.inches;
+      } else if(op.type==='anchor'){
+        live.anchor={date:op.date, kind:op.kind, value:op.value};
+      }
+    });
+  });
+  saveFields(); saveIrrigationLog(); saveRainOverrides();
+  _assistPending=null;
+  assistShowResult(`✓ Applied to ${touched.size} field${touched.size!==1?'s':''} — re-running…`, true);
+  document.getElementById('adInput').value='';
+  runAll(false).then(()=>{ if(state.activeId) openDetail(state.activeId, dShowAll); });
+}
+function assistDismiss(){ _assistPending=null; document.getElementById('adResult').classList.remove('show'); }
+
+// ── dock UI ──────────────────────────────────────────────────
+function assistShowResult(html, plain){
+  const el=document.getElementById('adResult');
+  el.innerHTML= plain?`<div>${html}</div>`:html;
+  el.classList.add('show');
+}
+function assistStatus(msg){ document.getElementById('adStatus').textContent=msg||''; }
+
+function assistantButtonClick(){ toggleAssistantDock(); }
+function toggleAssistantDock(force){
+  const dock=document.getElementById('assistDock');
+  const open= force!==undefined?force:!dock.classList.contains('open');
+  dock.classList.toggle('open',open);
+  if(open){
+    assistRefreshStatus();
+    setTimeout(()=>document.getElementById('adInput').focus(),50);
+  } else if(_recActive){ assistMicClick(); }   // closing the dock stops a live recording
+}
+// Status line; the model is only downloaded after an explicit tap.
+const ASSIST_ENABLE_HTML='<div class="ad-apply-row" style="margin-top:0;"><button class="btn primary sm" onclick="llmWarmup()">Enable AI assistant</button></div>';
+async function assistRefreshStatus(){
+  if(!(await webgpuProbe())){ assistStatus('Quick commands only'); return; }
+  if(_llm && _llmId===llmModelId()){ assistStatus('AI assistant ready'); return; }
+  const cached=await llmCached();
+  if(cached){ assistStatus('AI assistant ready'); }
+  else{ assistStatus('AI assistant not enabled'); assistShowResult(ASSIST_ENABLE_HTML, false); }
+}
+async function llmWarmup(){
+  if(!(await webgpuProbe())){ assistShowResult(webgpuUnavailableHtml(), false); return; }
+  assistShowResult('Setting up the AI assistant — you can keep using the app meanwhile.', true);
+  llmLoadAny(r=>assistStatus(r.text))
+    .then(()=>{ assistStatus('AI assistant ready'); assistShowResult('✓ AI assistant ready — type or speak an instruction.', true); })
+    .catch(async e=>{
+      assistStatus('AI assistant unavailable');
+      let notes=[]; try{ notes=await llmDiagnose(); }catch(_){ }
+      window.__assistLastLoadError={error:String(e&&e.message||e), notes};
+      const why=notes.length? notes.map(n=>esc(n)).join('<br>') : 'Check the connection and try again.';
+      assistShowResult('<span class="ad-err">Couldn’t set up the AI assistant.</span><div class="ad-warn">'+why+'</div><div class="ad-apply-row"><button class="btn primary sm" onclick="llmWarmup()">Try again</button></div>', false);
+    });
+}
+function webgpuUnavailableHtml(){
+  return '<span class="ad-err">The AI assistant needs a browser with WebGPU and a graphics processor.</span>'+
+    '<div class="ad-warn">Quick commands still work here. Try a recent Chrome, Edge, or Safari on another device.</div>';
+}
+
+// ── voice input — Web Speech API, hard-capped so commands stay short ──
+const ASSIST_MIC_MAX_MS=25000;
+let _rec=null, _recTimer=null, _recActive=false;
+function assistMicClick(){
+  if(_recActive){ try{ _rec.stop(); }catch(e){} return; }
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ showToast('Voice input isn’t supported in this browser — try Chrome, Edge, or Safari'); return; }
+  const rec=new SR();
+  rec.lang='en-US'; rec.interimResults=true; rec.continuous=true;
+  let finalTxt='';
+  rec.onresult=e=>{
+    let interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const r=e.results[i];
+      if(r.isFinal) finalTxt+=r[0].transcript+' '; else interim+=r[0].transcript;
+    }
+    document.getElementById('adInput').value=(finalTxt+interim).trim();
+  };
+  rec.onerror=ev=>{
+    if(ev.error==='not-allowed') showToast('Microphone access was blocked — allow it in the address bar');
+    else if(ev.error!=='aborted'&&ev.error!=='no-speech') showToast('Voice input error: '+ev.error);
+  };
+  rec.onend=()=>{
+    _recActive=false; clearTimeout(_recTimer);
+    document.getElementById('adMicBtn').classList.remove('listening');
+    assistStatus('');
+    const q=document.getElementById('adInput').value.trim();
+    if(q) assistantSend();   // review still happens on the proposal card
+  };
+  _rec=rec; _recActive=true;
+  document.getElementById('adMicBtn').classList.add('listening');
+  assistStatus('🔴 Listening — tap 🎤 to finish (25 s max). Keep it to one instruction.');
+  rec.start();
+  _recTimer=setTimeout(()=>{ try{ rec.stop(); }catch(e){} }, ASSIST_MIC_MAX_MS);
+}
+
+async function assistantSend(){
+  if(_assistBusy) return;
+  const q=document.getElementById('adInput').value.trim();
+  if(!q) return;
+  _assistBusy=true;
+  const btn=document.getElementById('adSendBtn');
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  try{
+    let parsed=null, via='rules';
+    try{ parsed=assistRules(q); }catch(e){ console.warn('assistRules error', e); parsed=null; }
+    // Fall back to the on-device model.
+    if(!parsed){
+      via='llm';
+      if(!(await webgpuProbe())){ assistShowResult(webgpuUnavailableHtml(), false); return; }
+      const ready=(_llm&&_llmId===llmModelId()) || await llmCached();
+      if(!ready){
+        assistShowResult('<span class="ad-err">That one needs the AI assistant.</span>'+ASSIST_ENABLE_HTML, false);
+        return;
+      }
+      assistShowResult('Thinking…', true);
+      const t0=performance.now();
+      const raw=await assistLLM(assistSystemPrompt(), q, r=>assistStatus(assistProgressText(r)));
+      window.__assistLastRaw=raw;   // debugging aid
+      assistStatus(`AI assistant · ${((performance.now()-t0)/1000).toFixed(1)} s`);
+      try{ parsed=JSON.parse(extractJson(raw)); }
+      catch(e){ assistShowResult('<span class="ad-err">Couldn’t understand that — try rephrasing (e.g. “North Pivot: corn planted May 2”).</span>'); return; }
+    }
+    if(!parsed.actions || !parsed.actions.length){
+      assistShowResult('<span class="ad-err">The assistant only makes edits — it can’t answer questions or give advice.</span><div class="ad-warn">Try an instruction like “North Pivot: corn planted May 2” or “log 0.5 inches on West 80 yesterday”. For irrigation guidance, check the field cards and morning brief.</div>');
+      return;
+    }
+    const {ops, lines, warns}=assistValidate(parsed.actions);
+    if(!ops.length){
+      assistShowResult(`<span class="ad-err">Nothing actionable found.</span>${warns.length?`<div class="ad-warn">${warns.join('<br>')}</div>`:''}`);
+      return;
+    }
+    _assistPending={ops};
+    const tag= via==='rules' ? '<span class="ad-via" title="Parsed instantly by the built-in command grammar">⚡ instant</span>'
+                             : '<span class="ad-via" title="Interpreted by the on-device AI assistant">🧠 AI</span>';
+    assistShowResult(
+      lines.map(l=>`<div class="ad-prop"><span class="ad-f">${esc(l.f)}</span><span>${l.txt}</span></div>`).join('')+
+      (warns.length?`<div class="ad-warn">${warns.join('<br>')}</div>`:'')+
+      `<div class="ad-apply-row">
+        <button class="btn primary sm" onclick="assistApply()">✓ Apply</button>
+        <button class="btn sm" onclick="assistDismiss()">Cancel</button>
+        ${tag}
+      </div>`);
+  }catch(e){
+    assistShowResult(`<span class="ad-err">Assistant error: ${esc(e&&e.message||String(e))}</span>`);
+  }finally{
+    _assistBusy=false; btn.disabled=false; btn.textContent='Send';
+  }
+}
+
+// ════════════════════════════════════════════════════════════
 //  UTIL / THEME / INIT
 // ════════════════════════════════════════════════════════════
 function openAbout(){
@@ -3006,6 +4470,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       (Date.now()-w.fetchedAt)>WX_MAX_AGE_MS ||
       !buildStations().every(s=>w.data && w.data[s.key]);
     if(stale) runAll(false);
+    else { maybeNotify(); maybeAutoBrief(); }
   } else {
     renderList();
     if(!set.center && navigator.geolocation){
@@ -3016,6 +4481,8 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       );
     }
   }
+
+  reconnectSyncFolder();   // restore a previously-connected backup folder, then load from it
 });
 </script>
 <script>
