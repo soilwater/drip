@@ -1259,7 +1259,7 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 //  Keep this in sync with CACHE in sw.js — the service worker only
 //  ships a new build when that cache name changes.
 // ════════════════════════════════════════════════════════════
-const APP_VERSION = '3.0.2';
+const APP_VERSION = '3.1.0';
 
 // ════════════════════════════════════════════════════════════
 //  MODEL CONSTANTS
@@ -3723,9 +3723,13 @@ function maybeNotify(){
 //  must confirm. Requires connectivity (the key is HTTP-referrer
 //  restricted server-side by Google; users can paste their own).
 // ════════════════════════════════════════════════════════════
-// ── ASSISTANT: on-device model (WebLLM on WebGPU) ──
+// ── ASSISTANT: on-device model ──
 // Instructions go to a small open model whose output is grammar-constrained to ASSIST_SCHEMA,
-// then through validate → confirm → apply. Devices without WebGPU get the assistant disabled.
+// then through validate → confirm → apply. Two runtimes, same model family, same schema:
+//   gpu — WebLLM on WebGPU (fast; Qwen2.5 1.5B, 0.5B fallback)
+//   cpu — wllama (llama.cpp in WebAssembly, single thread; Qwen2.5 0.5B GGUF) for phones and
+//         browsers without WebGPU. The system prompt is kept in the KV cache between commands.
+// Neither available (no WebAssembly SIMD) → the assistant is disabled.
 let _assistPending=null, _assistBusy=false;
 const WEBGPU_SUPPORTED = !!navigator.gpu;
 // navigator.gpu can exist without a usable adapter — probe once.
@@ -3736,7 +3740,70 @@ async function webgpuProbe(){
   try{ _gpuOk=!!(await navigator.gpu.requestAdapter()); }catch(e){ _gpuOk=false; }
   return _gpuOk;
 }
+function wasmSimdSupported(){
+  try{ return WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11])); }
+  catch(e){ return false; }
+}
+// 'gpu' | 'cpu' | '' (unsupported). Decided once per page.
+let _runtime=null;
+async function assistRuntime(){
+  if(_runtime!==null) return _runtime;
+  _runtime=(await webgpuProbe())?'gpu':(wasmSimdSupported()?'cpu':'');
+  return _runtime;
+}
+
+// ── cpu runtime: wllama ──
+let _cpu=null, _cpuLoading=null;
+async function cpuEngine(onProgress){
+  if(_cpu) return _cpu;
+  if(_cpuLoading) return _cpuLoading;
+  _cpuLoading=(async()=>{
+    const {Wllama}=await import(WLLAMA_URL);
+    const w=new Wllama({default:WLLAMA_WASM},{parallelDownloads:1, suppressNativeLog:true});
+    await w.loadModelFromUrl(CPU_MODEL_URL,{
+      n_ctx:2048, n_threads:1, useCache:true,
+      progressCallback:({loaded,total})=>{ const p=total?loaded/total:0; if(onProgress) onProgress({text:`Downloading model… ${Math.round(p*100)}%`, progress:p}); }
+    });
+    localStorage.setItem(LS_CPU_READY,'1');
+    _cpu=w;
+    return w;
+  })();
+  try{ return await _cpuLoading; } finally{ _cpuLoading=null; }
+}
+async function cpuChat(system, user, maxTokens){
+  const w=await cpuEngine();
+  const res=await w.createChatCompletion({
+    messages:[{role:'system',content:system},{role:'user',content:user}],
+    temperature:0, max_tokens:maxTokens||150, cache_prompt:true,
+    response_format:{type:'json_schema', json_schema:{name:'actions', schema:ASSIST_SCHEMA}}
+  });
+  return (res.choices&&res.choices[0]&&res.choices[0].message&&res.choices[0].message.content)||'';
+}
+// Process the system prompt once so the first real command only pays for its own words.
+function cpuWarmCache(){ cpuChat(assistSystemPrompt(), 'ok', 1).catch(()=>{}); }
+
+// Runtime-agnostic entry points used by the dock.
+async function assistModelReady(){
+  const rt=await assistRuntime();
+  if(rt==='gpu') return (_llm&&_llmId===llmModelId()) || await llmCached();
+  if(rt==='cpu') return !!_cpu || localStorage.getItem(LS_CPU_READY)==='1';
+  return false;
+}
+async function assistLoadModel(onProgress){
+  const rt=await assistRuntime();
+  if(rt==='gpu') return llmLoadAny(onProgress);
+  if(rt==='cpu'){ const w=await cpuEngine(onProgress); if(onProgress) onProgress({text:'Preparing…', progress:1}); cpuWarmCache(); return w; }
+  throw new Error('unsupported');
+}
+async function assistAsk(system, user, onProgress){
+  const rt=await assistRuntime();
+  return rt==='gpu' ? assistLLM(system, user, onProgress) : cpuChat(system, user);
+}
 const WEBLLM_URL='https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.84/+esm';
+const WLLAMA_URL='https://cdn.jsdelivr.net/npm/@wllama/wllama@3.6.1/esm/index.js';
+const WLLAMA_WASM='https://cdn.jsdelivr.net/npm/@wllama/wllama@3.6.1/esm/wasm/wllama.wasm';
+const CPU_MODEL_URL='https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf';   // ≈470 MB
+const LS_CPU_READY='drip_cpu_model_ready';
 const LS_LLM_MODEL='drip_llm_model';
 
 // Prebuilt MLC models, in fallback order; the first that loads on this device is remembered.
@@ -3938,8 +4005,28 @@ function extractJson(t){
   let s=String(t).trim();
   s=s.replace(/<think>[\s\S]*?<\/think>/g,'').trim();
   const fence=s.match(/```(?:json)?\s*([\s\S]*?)```/i); if(fence) s=fence[1].trim();
-  const a=s.indexOf('{'), b=s.lastIndexOf('}');
-  if(a>=0 && b>a) s=s.slice(a,b+1);
+  const a=s.indexOf('{');
+  if(a>=0) s=s.slice(a);
+  try{ JSON.parse(s); return s; }catch(_){ }
+  return repairJson(s);
+}
+// Best-effort repair of a reply cut off by the length cap: back off to the last point that
+// parses once the open brackets are closed.
+function repairJson(s){
+  const close=t=>{
+    const st=[]; let inStr=false, esc=false;
+    for(const ch of t){
+      if(inStr){ if(esc) esc=false; else if(ch==='\\') esc=true; else if(ch==='"') inStr=false; continue; }
+      if(ch==='"') inStr=true; else if(ch==='{') st.push('}'); else if(ch==='[') st.push(']'); else if(ch==='}'||ch===']') st.pop();
+    }
+    return inStr ? null : t+st.reverse().join('');
+  };
+  for(let i=s.length; i>0 && s.length-i<400; i--){
+    let t=s.slice(0,i).replace(/,\s*$/,'');
+    t=t.replace(/,?\s*"[^"]*"\s*:\s*$/,'').replace(/,?\s*"[^"]*$/,'');   // dangling "key": or "key
+    const c=close(t); if(!c) continue;
+    try{ JSON.parse(c); return c; }catch(_){ }
+  }
   return s;
 }
 
@@ -3956,7 +4043,7 @@ fields: ${fields}
 crop keys: ${crops}
 soil keys: ${soils}
 set keys: crop, plantingDate(YYYY-MM-DD), initWater(0-100 % of available water at planting), mad(30-70), soil, irrMode(hybrid/fixed/refill/none=rainfed), eff(%), fixedDepth(in), rootDepth(in), alerts(false=mute), name(rename).
-Rules: field is the closest existing name, or "*" for all fields. Include only keys the user stated; never pad with empty values. Dates YYYY-MM-DD; a log without a date means today. logIrrigation = water applied; logRain = rainfall. anchor only when a measured soil water is reported (kind: taw=% of available water, vwc=% volumetric, in=inches). If it is a question or not an edit, return {"actions":[]}.
+Rules: field is the closest existing name, or "*" only when the user says all/every field. Include only keys the user stated; never pad with empty values. Dates YYYY-MM-DD; a log without a date means today. logIrrigation = water applied, irrigated, watered, or simply "log N inches"; logRain = rain, rainfall, precipitation. anchor only when a measured soil water is reported (kind: taw=% of available water, vwc=% volumetric, in=inches). If it is a question or not an edit, return {"actions":[]}.
 Examples:
 "${ex1}: corn planted May 2, initial moisture 60%" -> {"actions":[{"field":"${ex1}","set":{"crop":"corn","plantingDate":"${yr}-05-02","initWater":60}}]}
 "we got 0.4 inches of rain yesterday on every field" -> {"actions":[{"field":"*","logRain":{"date":"${yday}","inches":0.4}}]}
@@ -3988,6 +4075,53 @@ function assistPreprocess(q){
      .replace(/(\d)\s*(?:%|percent|pct)\b/gi,'$1%')
      .replace(/(\d)\s*(?:inches|inch|in\b|")/gi,'$1 in');
   return s;
+}
+
+// ── output guardrail ──
+// Small models tend to pad every optional key with a default and to guess a field. Keep only
+// what the instruction actually talks about; the model still does all the interpreting.
+const _GATE_SET={
+  crop:/\b(corn|maize|soy\w*|beans?|sorghum|milo|wheat|sunflowers?|crop)\b/i,
+  plantingDate:/\b(plant|sow|seed|emerg|drill)\w*/i,
+  initWater:/\b(initial|starting|start)\b/i,
+  mad:/\b(mad|depletion)\b/i,
+  soil:/\b(soil|texture|sand\w*|loam\w*|silt\w*|clay\w*)\b/i,
+  irrMode:/\b(strategy|mode|rain-?\s?fed|dry\s?land|hybrid|refill|fixed|no irrigation)\b/i,
+  eff:/\befficien\w*/i,
+  fixedDepth:q=>/\b(application|apply|fixed)\b/i.test(q) || (/\bdepth\b/i.test(q) && !/\broot/i.test(q)),
+  rootDepth:/\broot/i,
+  alerts:/\b(alerts?|mute|unmute|silence|notification\w*|warnings?)\b/i,
+  name:/\b(rename|call it|named?)\b/i,
+};
+const _GATE_RAIN=/\b(rain\w*|precip\w*|storm\w*|showers?)\b/i;
+const _GATE_IRR=/\b(irrigat\w*|water\w*|appl\w*|pump\w*|log\w*|record\w*)\b|\b\d+(?:\.\d+)?\s*(?:in|inch\w*)\b/i;
+const _GATE_ANCHOR=/\b(probe|sensor|reading|measur\w*|vwc|taw|moisture|soil water)\b/i;
+const _GATE_ALL=/\b(all|every|each)\b/i;
+// Field whose name is spelled out in the text (all significant words of the name present).
+function assistFieldInText(q){
+  const t=String(q).toLowerCase();
+  const hits=state.fields.filter(f=>{ const toks=f.name.toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>1); return toks.length && toks.every(x=>new RegExp('\\b'+x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(t)); });
+  return hits.length===1 ? hits[0].name : null;
+}
+function assistGate(actions, q){
+  const out=[];
+  (actions||[]).forEach(a=>{
+    if(!a || typeof a!=='object') return;
+    const g={field:a.field};
+    if(a.set && typeof a.set==='object'){
+      const set={};
+      Object.keys(a.set).forEach(k=>{ const g=_GATE_SET[k]; if(g && (typeof g==='function' ? g(q) : g.test(q))) set[k]=a.set[k]; });
+      if(Object.keys(set).length) g.set=set;
+    }
+    if(a.logRain){ if(_GATE_RAIN.test(q)) g.logRain=a.logRain; else if(_GATE_IRR.test(q) && !a.logIrrigation) g.logIrrigation=a.logRain; }
+    if(a.logIrrigation && _GATE_IRR.test(q)) g.logIrrigation=a.logIrrigation;
+    if(a.anchor && _GATE_ANCHOR.test(q)) g.anchor=a.anchor;
+    if(String(g.field)==='*' && !_GATE_ALL.test(q)){
+      g.field=assistFieldInText(q) || (state.fields.length===1 ? state.fields[0].name : '');
+    }
+    if(g.field && Object.keys(g).length>1) out.push(g);
+  });
+  return out;
 }
 
 // ── field/value resolution ───────────────────────────────────
@@ -4126,11 +4260,9 @@ function toggleAssistantDock(force){
 // Status line; the model is only downloaded after an explicit tap.
 const ASSIST_ENABLE_HTML='<div class="ad-apply-row" style="margin-top:0;"><button class="btn primary sm" onclick="llmWarmup()">Enable AI assistant</button></div>';
 async function assistRefreshStatus(){
-  if(!(await webgpuProbe())){ assistStatus('AI assistant unavailable'); assistSetEnabled(false); assistShowResult(webgpuUnavailableHtml(), false); return; }
+  if(!(await assistRuntime())){ assistStatus('AI assistant unavailable'); assistSetEnabled(false); assistShowResult(webgpuUnavailableHtml(), false); return; }
   assistSetEnabled(true);
-  if(_llm && _llmId===llmModelId()){ assistStatus('AI assistant ready'); return; }
-  const cached=await llmCached();
-  if(cached){ assistStatus('AI assistant ready'); }
+  if(await assistModelReady()){ assistStatus('AI assistant ready'); }
   else{ assistStatus('AI assistant not enabled'); assistShowResult(ASSIST_ENABLE_HTML, false); }
 }
 function assistSetEnabled(on){
@@ -4138,13 +4270,14 @@ function assistSetEnabled(on){
   document.getElementById('adInput').placeholder= on ? 'Speak or type — “North Pivot: corn planted May 2, initial moisture 60%”' : 'AI assistant unavailable on this device';
 }
 async function llmWarmup(){
-  if(!(await webgpuProbe())){ assistShowResult(webgpuUnavailableHtml(), false); return; }
-  assistShowResult('Setting up the AI assistant — you can keep using the app meanwhile.', true);
-  llmLoadAny(r=>assistStatus(r.text))
+  const rt=await assistRuntime();
+  if(!rt){ assistShowResult(webgpuUnavailableHtml(), false); return; }
+  assistShowResult(rt==='cpu' ? 'Setting up the AI assistant — a one-time download; on a phone this can take a few minutes.' : 'Setting up the AI assistant — you can keep using the app meanwhile.', true);
+  assistLoadModel(r=>assistStatus(r.text))
     .then(()=>{ assistStatus('AI assistant ready'); assistShowResult('✓ AI assistant ready — type or speak an instruction.', true); })
     .catch(async e=>{
       assistStatus('AI assistant unavailable');
-      let notes=[]; try{ notes=await llmDiagnose(); }catch(_){ }
+      let notes=[]; try{ if(rt==='gpu') notes=await llmDiagnose(); }catch(_){ }
       window.__assistLastLoadError={error:String(e&&e.message||e), notes};
       const why=notes.length? notes.map(n=>esc(n)).join('<br>') : 'Check the connection and try again.';
       assistShowResult('<span class="ad-err">Couldn’t set up the AI assistant.</span><div class="ad-warn">'+why+'</div><div class="ad-apply-row"><button class="btn primary sm" onclick="llmWarmup()">Try again</button></div>', false);
@@ -4197,12 +4330,11 @@ async function assistantSend(){
   const btn=document.getElementById('adSendBtn');
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   try{
-    if(!(await webgpuProbe())){ assistShowResult(webgpuUnavailableHtml(), false); return; }
-    const ready=(_llm&&_llmId===llmModelId()) || await llmCached();
-    if(!ready){ assistShowResult('<span class="ad-err">Enable the AI assistant first.</span>'+ASSIST_ENABLE_HTML, false); return; }
+    if(!(await assistRuntime())){ assistShowResult(webgpuUnavailableHtml(), false); return; }
+    if(!(await assistModelReady())){ assistShowResult('<span class="ad-err">Enable the AI assistant first.</span>'+ASSIST_ENABLE_HTML, false); return; }
     assistShowResult('Thinking…', true);
     const t0=performance.now();
-    const raw=await assistLLM(assistSystemPrompt(), assistPreprocess(q), r=>assistStatus(assistProgressText(r)));
+    const raw=await assistAsk(assistSystemPrompt(), assistPreprocess(q), r=>assistStatus(assistProgressText(r)));
     window.__assistLastRaw=raw;   // debugging aid
     assistStatus(`AI assistant · ${((performance.now()-t0)/1000).toFixed(1)} s`);
     let parsed;
@@ -4212,7 +4344,7 @@ async function assistantSend(){
       assistShowResult('<span class="ad-err">The assistant only makes edits — it can’t answer questions or give advice.</span><div class="ad-warn">Try an instruction like “North Pivot: corn planted May 2” or “log 0.5 inches on West 80 yesterday”. For irrigation guidance, check the field cards and morning brief.</div>');
       return;
     }
-    const {ops, lines, warns}=assistValidate(parsed.actions);
+    const {ops, lines, warns}=assistValidate(assistGate(parsed.actions, q));
     if(!ops.length){
       assistShowResult(`<span class="ad-err">Nothing actionable found.</span>${warns.length?`<div class="ad-warn">${warns.join('<br>')}</div>`:''}`);
       return;
