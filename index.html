@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════
-  v3 WebLLM build — deterministic command parser + on-device open model (WebGPU).
+  v3 build — on-device AI assistant (WebLLM on WebGPU).
   DRIP — Daily Rootzone Irrigation Planner
   Copyright © 2026 Andres Patrignani - Kansas State University. All rights
   reserved except as explicitly granted below.
@@ -648,7 +648,6 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 .ad-warn{color:var(--amb);font-size:12.5px;margin-top:6px;}
 .ad-err{color:var(--red);font-size:13px;}
 .ad-apply-row{display:flex;gap:8px;margin-top:10px;}
-.ad-apply-row .ad-via{margin-left:auto;align-self:center;font-size:11.5px;color:var(--mut);white-space:nowrap;}
 .ad-inputrow{display:flex;gap:8px;padding:10px 12px;align-items:center;}
 .ad-inputrow input{flex:1;min-width:0;padding:9px 12px;font-size:14.5px;}
 .ad-keyrow{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid var(--bdr);flex-wrap:wrap;align-items:center;}
@@ -1260,7 +1259,7 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 //  Keep this in sync with CACHE in sw.js — the service worker only
 //  ships a new build when that cache name changes.
 // ════════════════════════════════════════════════════════════
-const APP_VERSION = '3.0.1';
+const APP_VERSION = '3.0.2';
 
 // ════════════════════════════════════════════════════════════
 //  MODEL CONSTANTS
@@ -3724,10 +3723,9 @@ function maybeNotify(){
 //  must confirm. Requires connectivity (the key is HTTP-referrer
 //  restricted server-side by Google; users can paste their own).
 // ════════════════════════════════════════════════════════════
-// ── ASSISTANT: deterministic parser first, on-device model (WebLLM/WebGPU) as fallback ──
-// assistRules() handles everyday commands instantly in any browser and only answers when it
-// consumed the whole instruction. Anything else goes to a small open model whose output is
-// grammar-constrained to ASSIST_SCHEMA. Downstream (validate → confirm → apply) is shared.
+// ── ASSISTANT: on-device model (WebLLM on WebGPU) ──
+// Instructions go to a small open model whose output is grammar-constrained to ASSIST_SCHEMA,
+// then through validate → confirm → apply. Devices without WebGPU get the assistant disabled.
 let _assistPending=null, _assistBusy=false;
 const WEBGPU_SUPPORTED = !!navigator.gpu;
 // navigator.gpu can exist without a usable adapter — probe once.
@@ -3965,193 +3963,31 @@ Examples:
 "probe on ${ex1} read 22% vwc this morning, and mute its alerts" -> {"actions":[{"field":"${ex1}","anchor":{"date":"${todayStr()}","kind":"vwc","value":22},"set":{"alerts":false}}]}`;
 }
 
-// ── stage 1: deterministic parser ──
-// Returns {actions:[...]} in the model's shape, or null when unsure (then the model gets it).
-const _MONTHS=['january','february','march','april','may','june','july','august','september','october','november','december'];
-const _WEEKDAYS=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-const _escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-const _dayShift=n=>isoDate(new Date(Date.now()+n*86400000));
-
-// Lower-case, unify units, spell numbers as digits ("half an inch" → 0.5 in).
-function assistNormalize(q){
-  let s=String(q||'').toLowerCase().replace(/[“”"″]/g,'"').replace(/[‘’]/g,"'").replace(/\s+/g,' ').trim();
-  s=s.replace(/\b(\d+)\s+and\s+a\s+half\b/g,(m,a)=>String(+a+0.5))
-     .replace(/\b(\d+)\s+and\s+a\s+quarter\b/g,(m,a)=>String(+a+0.25))
-     .replace(/\b(\d+)\s+and\s+three\s+quarters?\b/g,(m,a)=>String(+a+0.75))
-     .replace(/\ban?\s+inch\s+and\s+a\s+half\b/g,'1.5 in')
-     .replace(/\b(?:a\s+)?half\s+(?:of\s+)?(?:an?\s+)?inch\b/g,'0.5 in')
-     .replace(/\b(?:a\s+)?quarter\s+(?:of\s+)?(?:an?\s+)?inch\b/g,'0.25 in')
-     .replace(/\bthree\s+quarters?\s+(?:of\s+)?(?:an?\s+)?inch\b/g,'0.75 in')
-     .replace(/\b(?:a\s+)?tenth\s+(?:of\s+)?(?:an?\s+)?inch\b/g,'0.1 in')
-     .replace(/\ban\s+inch\b/g,'1 in')
-     .replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten)\s+point\s+(zero|one|two|three|four|five|six|seven|eight|nine)\b/g,(m,a,b)=>`${_wordNum(a)}.${_wordNum(b)}`)
-     .replace(/\b(\d+)\s+point\s+(\d+)\b/g,'$1.$2')
-     .replace(/\bpoint\s+(\d)\b/g,'0.$1')
-     .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b(?=\s*(?:in\b|inch|"|percent|%|days?))/g,(m,a)=>String(_wordNum(a)))
-     .replace(/(\d)\s*(?:%|percent|pct)\b/g,'$1%')
-     .replace(/(\d)\s*(?:inches|inch|in\b|")/g,'$1 in');
+// ── input preprocessing ──
+// Spoken numbers and units → digits the model handles reliably ("half an inch" → "0.5 in",
+// "sixty percent" → "60%"). Case and wording are otherwise left alone.
+const _NUMWORDS={zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90,hundred:100};
+function assistPreprocess(q){
+  let s=String(q||'').replace(/[“”″]/g,'"').replace(/[‘’]/g,"'").replace(/\s+/g,' ').trim();
+  const nw='(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)';
+  const num=w=>_NUMWORDS[w.toLowerCase()];
+  s=s.replace(new RegExp('\\b'+nw+'[ -]'+nw+'\\b','gi'),(m,a,b)=>{ const x=num(m.split(/[ -]/)[0]), y=num(m.split(/[ -]/)[1]); return (x>=20&&y<10)?String(x+y):m; })
+     .replace(/\b(\d+)\s+and\s+a\s+half\b/gi,(m,a)=>String(+a+0.5))
+     .replace(/\b(\d+)\s+and\s+a\s+quarter\b/gi,(m,a)=>String(+a+0.25))
+     .replace(/\b(\d+)\s+and\s+three\s+quarters?\b/gi,(m,a)=>String(+a+0.75))
+     .replace(/\ban?\s+inch\s+and\s+a\s+half\b/gi,'1.5 in')
+     .replace(/\b(?:a\s+)?half\s+(?:of\s+)?(?:an?\s+)?inch\b/gi,'0.5 in')
+     .replace(/\b(?:a\s+)?quarter\s+(?:of\s+)?(?:an?\s+)?inch\b/gi,'0.25 in')
+     .replace(/\bthree\s+quarters?\s+(?:of\s+)?(?:an?\s+)?inch\b/gi,'0.75 in')
+     .replace(/\b(?:a\s+)?tenth\s+(?:of\s+)?(?:an?\s+)?inch\b/gi,'0.1 in')
+     .replace(/\ban\s+inch\b/gi,'1 in')
+     .replace(new RegExp('\\b'+nw+'\\s+point\\s+'+nw+'\\b','gi'),m=>{ const p=m.split(/\s+point\s+/i); return num(p[0])+'.'+num(p[1]); })
+     .replace(/\b(\d+)\s+point\s+(\d+)\b/gi,'$1.$2')
+     .replace(/\bpoint\s+(\d)\b/gi,'0.$1')
+     .replace(new RegExp('\\b'+nw+'\\b(?=\\s*(?:in\\b|inch|"|percent|%|days?|hours?))','gi'),m=>String(num(m)))
+     .replace(/(\d)\s*(?:%|percent|pct)\b/gi,'$1%')
+     .replace(/(\d)\s*(?:inches|inch|in\b|")/gi,'$1 in');
   return s;
-}
-function _wordNum(w){ return ['zero','one','two','three','four','five','six','seven','eight','nine','ten'].indexOf(w); }
-
-// One date expression → {date, re} or null. A future date with no year means last year.
-function assistFindDate(s){
-  const today=new Date(); today.setHours(0,0,0,0);
-  const back=(iso,explicitYear)=>{ if(!explicitYear && iso>todayStr()){ const d=new Date(iso+'T00:00:00'); d.setFullYear(d.getFullYear()-1); return isoDate(d); } return iso; };
-  let m;
-  if((m=s.match(/\b(?:the\s+)?day\s+before\s+yesterday\b/))) return {date:_dayShift(-2), re:m[0]};
-  if((m=s.match(/\byesterday(?:\s+(?:morning|afternoon|evening|night))?\b/))) return {date:_dayShift(-1), re:m[0]};
-  if((m=s.match(/\b(?:today|tonight|this\s+(?:morning|afternoon|evening)|last\s+night)\b/))) return {date:todayStr(), re:m[0]};
-  if((m=s.match(/\b(\d+)\s+days?\s+ago\b/))) return {date:_dayShift(-(+m[1])), re:m[0]};
-  if((m=s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/))) return {date:m[0], re:m[0]};
-  if((m=s.match(/\b(last\s+|on\s+|this\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/))){
-    const idx=_WEEKDAYS.indexOf(m[2]); let diff=(today.getDay()-idx+7)%7;
-    if(diff===0 && /last/.test(m[1]||'')) diff=7;
-    return {date:_dayShift(-diff), re:m[0]};
-  }
-  const mon='(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-  const monIdx=w=>_MONTHS.findIndex(x=>x.startsWith(w.slice(0,3)));
-  if((m=s.match(new RegExp('\\b'+mon+'\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b')))){
-    const y=m[3]?+m[3]:today.getFullYear(), iso=`${y}-${String(monIdx(m[1])+1).padStart(2,'0')}-${String(+m[2]).padStart(2,'0')}`;
-    return {date:back(iso,!!m[3]), re:m[0]};
-  }
-  if((m=s.match(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?'+mon+'\\.?(?:,?\\s+(\\d{4}))?\\b')))){
-    const y=m[3]?+m[3]:today.getFullYear(), iso=`${y}-${String(monIdx(m[2])+1).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`;
-    return {date:back(iso,!!m[3]), re:m[0]};
-  }
-  if((m=s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/))){
-    let y=today.getFullYear(); if(m[3]) y=m[3].length===2?2000+(+m[3]):+m[3];
-    const iso=`${y}-${String(+m[1]).padStart(2,'0')}-${String(+m[2]).padStart(2,'0')}`;
-    return {date:back(iso,!!m[3]), re:m[0]};
-  }
-  if((m=s.match(/\bon\s+the\s+(\d{1,2})(?:st|nd|rd|th)\b/))){
-    const iso=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`;
-    let d=iso; if(d>todayStr()){ const x=new Date(iso+'T00:00:00'); x.setMonth(x.getMonth()-1); d=isoDate(x); }
-    return {date:d, re:m[0]};
-  }
-  return null;
-}
-
-// Fields named in the text → {names|['*'], s} with the mentions blanked. Longest names first.
-function assistFindFields(s){
-  if(/\b(?:all|every|each)\s+(?:of\s+)?(?:the\s+|my\s+)?(?:fields?|pivots?)\b/.test(s) || /\ball\s+of\s+them\b/.test(s)){
-    s=s.replace(/\b(?:all|every|each)\s+(?:of\s+)?(?:the\s+|my\s+)?(?:fields?|pivots?)\b/,' ').replace(/\ball\s+of\s+them\b/,' ');
-    return {names:['*'], s};
-  }
-  const names=[];
-  const cropWords=Object.values(CROPS).map(c=>c.name.toLowerCase()), soilWords=Object.values(SOILS).map(c=>c.name.toLowerCase());
-  const sorted=[...state.fields].sort((a,b)=>b.name.length-a.name.length);
-  for(const f of sorted){
-    const n=f.name.toLowerCase().trim(); if(!n) continue;
-    const re=new RegExp('(^|[^a-z0-9])'+_escRe(n)+'(?![a-z0-9])');
-    if(re.test(s)){ names.push(f.name); s=s.replace(re,'$1 '); continue; }
-    // token form — "the north pivot field" ↔ "North Pivot"
-    const toks=n.split(/[^a-z0-9]+/).filter(t=>t.length>2 && !['field','pivot','the','farm'].includes(t) && !cropWords.includes(t) && !soilWords.includes(t));
-    if(toks.length && toks.every(t=>new RegExp('\\b'+_escRe(t)+'\\b').test(s))){
-      names.push(f.name); toks.forEach(t=>{ s=s.replace(new RegExp('\\b'+_escRe(t)+'\\b'),' '); });
-    }
-  }
-  return {names, s};
-}
-
-// Why the last assistRules() call gave up — drives the message when no model can take over.
-let _rulesWhy='';
-function assistRules(q){
-  _rulesWhy='unparsed';
-  if(!state.fields.length){ _rulesWhy='nofields'; return null; }
-  let s=assistNormalize(q);
-  const take=re=>{ const m=s.match(re); if(m) s=s.replace(re,' '); return m; };
-
-  // Field(s): "Name: …" prefix, else any field name in the text, else the open field.
-  let names=[];
-  const colon=s.indexOf(':');
-  if(colon>0){
-    const pre=s.slice(0,colon).trim();
-    const m=assistMatchFields(pre);
-    if(m.length){ names=m.map(f=>f.name); s=s.slice(colon+1); }
-  }
-  if(!names.length){ const r=assistFindFields(s); names=r.names; s=r.s; }
-
-  // One date per instruction (applies to every clause in it).
-  const dt=assistFindDate(s); if(dt) s=s.replace(dt.re,' ');
-  const date=dt?dt.date:null;
-
-  const set={}; const act={}; let m;
-
-  // rename (whole-line command; needs exactly one target)
-  if((m=take(/\brename\b(.*?)\b(?:to|as)\s+"?([^"]+?)"?\s*$/))){
-    if(!names.length){ const t=assistMatchFields(m[1].trim()); if(t.length===1) names=[t[0].name]; }
-    if(names.length!==1 || names[0]==='*') return null;
-    set.name=m[2].trim();
-  }
-  // alerts
-  if(take(/\b(?:mute|silence|turn\s+off|disable|stop|pause)\s+(?:the\s+|its\s+|all\s+)?(?:alerts?|notifications?|warnings?)\b/)) set.alerts=false;
-  else if(take(/\b(?:unmute|turn\s+on|enable|resume|re-?enable)\s+(?:the\s+|its\s+|all\s+)?(?:alerts?|notifications?|warnings?)\b/)) set.alerts=true;
-  else if(take(/\b(?:alerts?|notifications?)\s+(?:off|muted)\b/)) set.alerts=false;
-  else if(take(/\b(?:alerts?|notifications?)\s+(?:on|back\s+on)\b/)) set.alerts=true;
-  // irrigation strategy
-  if(take(/\b(?:rain-?\s?fed|dry\s?land|no\s+irrigation|not\s+irrigated|without\s+irrigation)\b/)) set.irrMode='none';
-  if((m=take(/\b(?:strategy|mode|scheduling)\s*(?:to|=|is|:|as)?\s*(hybrid|fixed(?:\s+depth)?|refill)\b/)) || (m=take(/\b(hybrid|fixed(?:\s+depth)?|refill)\s+(?:strategy|mode|scheduling|irrigation)\b/))){
-    set.irrMode=m[1].startsWith('fixed')?'fixed':m[1];
-  }
-  // efficiency
-  if((m=take(/\b(?:efficiency|efficient)\s*(?:to|at|of|is|=|:)?\s*(\d+(?:\.\d+)?)%?/)) || (m=take(/\b(\d+(?:\.\d+)?)%\s*(?:efficiency|efficient)\b/))) set.eff=+m[1];
-  // application depth
-  if((m=take(/\b(?:application|fixed|irrigation|set)\s+depth\s*(?:to|of|at|is|=|:)?\s*(\d+(?:\.\d+)?|\.\d+)\s*(?:in)?\b/)) || (m=take(/\bapply\s+(\d+(?:\.\d+)?|\.\d+)\s*in\s+(?:per|each|every)\b/))) set.fixedDepth=+m[1];
-  // root depth
-  if((m=take(/\broot(?:ing)?\s*(?:zone|depth)\s*(?:to|of|at|is|=|:)?\s*(\d+(?:\.\d+)?|\.\d+)\s*(?:in)?\b/))) set.rootDepth=+m[1];
-  // MAD
-  if((m=take(/\b(?:mad|allowable\s+depletion|management\s+allowed\s+depletion|depletion)\s*(?:to|at|of|is|=|:)?\s*(\d+)%?/)) || (m=take(/\b(\d+)%\s*(?:mad|depletion)\b/))) set.mad=+m[1];
-  // initial moisture (at planting)
-  if((m=take(/\b(?:initial|starting|start)\s+(?:soil\s+)?(?:moisture|water|soil\s+water)(?:\s+(?:content|level))?\s*(?:to|at|of|is|=|:|was)?\s*(\d+(?:\.\d+)?)%?/)) || (m=take(/\b(\d+(?:\.\d+)?)%\s*(?:initial|starting)\s+(?:soil\s+)?(?:moisture|water)\b/))) set.initWater=+m[1];
-  // measured soil water → anchor ("22% vwc" or "probe reads 22 percent")
-  const anchorWords=/\b(?:probe|sensor|reading|measured|measurement|vwc|volumetric(?:\s+water)?|taw|soil\s+(?:water|moisture)|moisture)\b/;
-  if((m=take(/\b(\d+(?:\.\d+)?|\.\d+)\s*(%|in)?\s*(vwc|volumetric|taw|plant\s+available)\b/)) ||
-     (m=take(/\b(?:probe|sensor|reading|measured|measurement|vwc|volumetric(?:\s+water)?|taw|soil\s+(?:water|moisture)|moisture)\b(?:\s+(?:content|reads?|read|is|was|at|of|says?|shows?|measured|=|:|on))*\s*(\d+(?:\.\d+)?|\.\d+)\s*(%|in)?/))){
-    const kind=/vwc|volumetric/.test(m[0])?'vwc':(m[2]==='in'?'in':'taw');
-    act.anchor={date:date||todayStr(), kind, value:+m[1]};
-    s=s.replace(anchorWords,' ').replace(/\b(?:reads?|read|says?|shows?)\b/,' ');   // "probe … read 22% vwc"
-  }
-  // planting date and crop
-  const planted=!!take(/\b(?:plant(?:ed|ing)?|sow(?:ed|n|ing)?|seeded|emerged|emergence|drilled)\b/);
-  const cropRe={corn:/\bcorn\b|\bmaize\b/, soybean:/\bsoy\s?beans?\b|\bbeans\b/, sorghum:/\bsorghum\b|\bmilo\b/, winterWheat:/\bwinter\s+wheat\b|\bwheat\b/, sunflower:/\bsun\s?flowers?\b/};
-  for(const [k,re] of Object.entries(cropRe)){ if(CROPS[k] && take(re)){ set.crop=k; break; } }
-  if(Object.values(cropRe).some(re=>re.test(s))) return null;   // a second crop → per-field values → model
-  if(planted){ if(date) set.plantingDate=date; else if(!set.crop) return null; }
-  // soil texture (longest names first so "silt loam" wins over "loam")
-  const soilEntries=Object.entries(SOILS).sort((a,b)=>b[1].name.length-a[1].name.length);
-  for(const [k,c] of soilEntries){
-    if(take(new RegExp('\\b'+_escRe(c.name.toLowerCase())+'\\b(?:\\s+(?:soil|texture))?'))){ set.soil=k; break; }
-  }
-  if(soilEntries.some(([k,c])=>new RegExp('\\b'+_escRe(c.name.toLowerCase())+'\\b').test(s))) return null;
-  take(/\b(?:soil|texture)\s*(?:is|to|=|:)?\b/);
-  // irrigation / rain logs (an amount with an inch unit is required)
-  const amt=()=>{ const a=take(/\b(\d+(?:\.\d+)?|\.\d+)\s*in\b/); return a?+a[1]:null; };
-  const takeAll=re=>{ const hit=re.test(s); if(hit) s=s.replace(re,' '); return hit; };
-  const rainVerb=takeAll(/\b(?:rain\w*|precip\w*|storm\w*|shower\w*|got|received)\b/g);
-  const irrVerb=takeAll(/\b(?:irrigat\w*|water(?:ed|ing)|applied|apply|put\s+on|ran\s+(?:the\s+)?pivot|pivot\s+ran|pumped)\b/g);
-  const logVerb=takeAll(/\b(?:log(?:ged)?|record(?:ed)?|enter(?:ed)?|add(?:ed)?)\b(?:\s+an?\s+irrigation)?/g);
-  if(rainVerb){ const a=amt(); if(a==null) return null; act.logRain={date:date||todayStr(), inches:a}; }
-  // An explicit irrigation verb, or a bare "log N inches" with no rain word, is an irrigation log.
-  if(irrVerb || (logVerb && !rainVerb)){ const a=amt(); if(a!=null) act.logIrrigation={date:date||todayStr(), inches:a}; else if(irrVerb) return null; }
-
-  if(!Object.keys(set).length && !Object.keys(act).length) return null;
-
-  if(!names.length){
-    if(state.activeId){ const f=state.fields.find(x=>x.id===state.activeId); if(f) names=[f.name]; }
-    else if(state.fields.length===1) names=[state.fields[0].name];   // only one field: no need to name it
-    if(!names.length){ _rulesWhy='nofield'; return null; }
-  }
-  // Coverage check: anything left that looks meaningful → let the model do it.
-  const rest=s.replace(/\b(?:log|set|change|update|record|enter|add|make|mark|please|the|a|an|of|on|for|to|at|in|with|and|then|its|it|is|was|were|are|be|field|fields|pivot|farm|now|from|by|our|my|we|i|as|so|that|this|there|this|morning|afternoon|last|night|also|too)\b/g,' ')
-    .replace(/[^a-z0-9%]+/g,' ').trim();
-  if(/\d/.test(rest)) return null;
-  if(/\b(?:rename|mute|plant|crop|soil|probe|sensor|alert|strategy|mode|depth|moisture|water|rain|irrigat|efficien|mad|vwc|taw|anchor|delete|remove|import|export|show|open|what|how|when|why|which|should|tomorrow|next)\w*/.test(rest)) return null;
-  if(rest.split(' ').filter(Boolean).length>3) return null;
-
-  if(set.name!==undefined && names.length!==1) return null;
-  const mk=n=>{ const a={field:n}; if(Object.keys(set).length) a.set={...set}; Object.assign(a, act); return a; };
-  return {actions:names.map(mk)};
 }
 
 // ── field/value resolution ───────────────────────────────────
@@ -4290,11 +4126,16 @@ function toggleAssistantDock(force){
 // Status line; the model is only downloaded after an explicit tap.
 const ASSIST_ENABLE_HTML='<div class="ad-apply-row" style="margin-top:0;"><button class="btn primary sm" onclick="llmWarmup()">Enable AI assistant</button></div>';
 async function assistRefreshStatus(){
-  if(!(await webgpuProbe())){ assistStatus('Quick commands only'); return; }
+  if(!(await webgpuProbe())){ assistStatus('AI assistant unavailable'); assistSetEnabled(false); assistShowResult(webgpuUnavailableHtml(), false); return; }
+  assistSetEnabled(true);
   if(_llm && _llmId===llmModelId()){ assistStatus('AI assistant ready'); return; }
   const cached=await llmCached();
   if(cached){ assistStatus('AI assistant ready'); }
   else{ assistStatus('AI assistant not enabled'); assistShowResult(ASSIST_ENABLE_HTML, false); }
+}
+function assistSetEnabled(on){
+  ['adInput','adMicBtn','adSendBtn'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled=!on; });
+  document.getElementById('adInput').placeholder= on ? 'Speak or type — “North Pivot: corn planted May 2, initial moisture 60%”' : 'AI assistant unavailable on this device';
 }
 async function llmWarmup(){
   if(!(await webgpuProbe())){ assistShowResult(webgpuUnavailableHtml(), false); return; }
@@ -4310,18 +4151,8 @@ async function llmWarmup(){
     });
 }
 function webgpuUnavailableHtml(){
-  return '<div class="ad-warn" style="margin-top:8px;">Your device and browser version do not currently support this AI assistant.</div>';
+  return '<span class="ad-err">Your device and browser version do not currently support this AI assistant.</span>';
 }
-// Explain why a quick command was not understood, with examples that use the user's own field names.
-function quickCommandHelpHtml(){
-  const f=state.fields[0]?state.fields[0].name:'North Pivot';
-  if(_rulesWhy==='nofields') return '<span class="ad-err">Add a field first, then tell the assistant what happened.</span>';
-  if(_rulesWhy==='nofield') return '<span class="ad-err">Which field? Name it as it appears in your list.</span><div class="ad-warn">For example: “'+esc(f)+': log 0.5 inches yesterday”. Or open a field first and leave the name out.</div>';
-  if(/^error/.test(_rulesWhy)) return '<span class="ad-err">Something went wrong reading that.</span><div class="ad-warn">'+esc(_rulesWhy)+'</div>';
-  return '<span class="ad-err">Couldn’t read that as a quick command.</span><div class="ad-warn">Quick commands are one instruction naming a field, for example:<br>'+
-    '“'+esc(f)+': log 0.5 inches yesterday” · “rain 0.4 inches on '+esc(f)+' Monday” · “'+esc(f)+': corn planted May 2, initial moisture 60%” · “mute alerts on '+esc(f)+'” · “'+esc(f)+' probe reads 22% vwc” · “rename '+esc(f)+' to Home 80”.</div>';
-}
-
 // ── voice input — Web Speech API, hard-capped so commands stay short ──
 const ASSIST_MIC_MAX_MS=25000;
 let _rec=null, _recTimer=null, _recActive=false;
@@ -4366,27 +4197,17 @@ async function assistantSend(){
   const btn=document.getElementById('adSendBtn');
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   try{
-    let parsed=null, via='rules';
-    try{ parsed=assistRules(q); }catch(e){ console.warn('assistRules error', e); parsed=null; _rulesWhy='error: '+(e&&e.message||e); }
-    // Fall back to the on-device model.
-    if(!parsed){
-      via='llm';
-      // A missing field can't be fixed by the model either — say so first.
-      if(_rulesWhy==='nofields'||_rulesWhy==='nofield'){ assistShowResult(quickCommandHelpHtml(), false); return; }
-      if(!(await webgpuProbe())){ assistShowResult(quickCommandHelpHtml()+webgpuUnavailableHtml(), false); return; }
-      const ready=(_llm&&_llmId===llmModelId()) || await llmCached();
-      if(!ready){
-        assistShowResult('<span class="ad-err">That one needs the AI assistant.</span>'+ASSIST_ENABLE_HTML, false);
-        return;
-      }
-      assistShowResult('Thinking…', true);
-      const t0=performance.now();
-      const raw=await assistLLM(assistSystemPrompt(), q, r=>assistStatus(assistProgressText(r)));
-      window.__assistLastRaw=raw;   // debugging aid
-      assistStatus(`AI assistant · ${((performance.now()-t0)/1000).toFixed(1)} s`);
-      try{ parsed=JSON.parse(extractJson(raw)); }
-      catch(e){ assistShowResult('<span class="ad-err">Couldn’t understand that — try rephrasing (e.g. “North Pivot: corn planted May 2”).</span>'); return; }
-    }
+    if(!(await webgpuProbe())){ assistShowResult(webgpuUnavailableHtml(), false); return; }
+    const ready=(_llm&&_llmId===llmModelId()) || await llmCached();
+    if(!ready){ assistShowResult('<span class="ad-err">Enable the AI assistant first.</span>'+ASSIST_ENABLE_HTML, false); return; }
+    assistShowResult('Thinking…', true);
+    const t0=performance.now();
+    const raw=await assistLLM(assistSystemPrompt(), assistPreprocess(q), r=>assistStatus(assistProgressText(r)));
+    window.__assistLastRaw=raw;   // debugging aid
+    assistStatus(`AI assistant · ${((performance.now()-t0)/1000).toFixed(1)} s`);
+    let parsed;
+    try{ parsed=JSON.parse(extractJson(raw)); }
+    catch(e){ assistShowResult('<span class="ad-err">Couldn’t understand that — try rephrasing (e.g. “North Pivot: corn planted May 2”).</span>'); return; }
     if(!parsed.actions || !parsed.actions.length){
       assistShowResult('<span class="ad-err">The assistant only makes edits — it can’t answer questions or give advice.</span><div class="ad-warn">Try an instruction like “North Pivot: corn planted May 2” or “log 0.5 inches on West 80 yesterday”. For irrigation guidance, check the field cards and morning brief.</div>');
       return;
@@ -4397,15 +4218,12 @@ async function assistantSend(){
       return;
     }
     _assistPending={ops};
-    const tag= via==='rules' ? '<span class="ad-via" title="Parsed instantly by the built-in command grammar">⚡ instant</span>'
-                             : '<span class="ad-via" title="Interpreted by the on-device AI assistant">🧠 AI</span>';
     assistShowResult(
       lines.map(l=>`<div class="ad-prop"><span class="ad-f">${esc(l.f)}</span><span>${l.txt}</span></div>`).join('')+
       (warns.length?`<div class="ad-warn">${warns.join('<br>')}</div>`:'')+
       `<div class="ad-apply-row">
         <button class="btn primary sm" onclick="assistApply()">✓ Apply</button>
         <button class="btn sm" onclick="assistDismiss()">Cancel</button>
-        ${tag}
       </div>`);
   }catch(e){
     assistShowResult(`<span class="ad-err">Assistant error: ${esc(e&&e.message||String(e))}</span>`);
