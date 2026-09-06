@@ -1260,7 +1260,7 @@ input:focus,select:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 2px
 //  Keep this in sync with CACHE in sw.js — the service worker only
 //  ships a new build when that cache name changes.
 // ════════════════════════════════════════════════════════════
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '3.0.1';
 
 // ════════════════════════════════════════════════════════════
 //  MODEL CONSTANTS
@@ -4054,8 +4054,11 @@ function assistFindFields(s){
   return {names, s};
 }
 
+// Why the last assistRules() call gave up — drives the message when no model can take over.
+let _rulesWhy='';
 function assistRules(q){
-  if(!state.fields.length) return null;
+  _rulesWhy='unparsed';
+  if(!state.fields.length){ _rulesWhy='nofields'; return null; }
   let s=assistNormalize(q);
   const take=re=>{ const m=s.match(re); if(m) s=s.replace(re,' '); return m; };
 
@@ -4125,13 +4128,20 @@ function assistRules(q){
   // irrigation / rain logs (an amount with an inch unit is required)
   const amt=()=>{ const a=take(/\b(\d+(?:\.\d+)?|\.\d+)\s*in\b/); return a?+a[1]:null; };
   const takeAll=re=>{ const hit=re.test(s); if(hit) s=s.replace(re,' '); return hit; };
-  const irrVerb=takeAll(/\b(?:irrigat\w*|water(?:ed|ing)|applied|apply|put\s+on|ran\s+(?:the\s+)?pivot|pivot\s+ran|pumped|log\s+(?:an?\s+)?irrigation)\b/g);
   const rainVerb=takeAll(/\b(?:rain\w*|precip\w*|storm\w*|shower\w*|got|received)\b/g);
-  if(irrVerb){ const a=amt(); if(a==null) return null; act.logIrrigation={date:date||todayStr(), inches:a}; }
+  const irrVerb=takeAll(/\b(?:irrigat\w*|water(?:ed|ing)|applied|apply|put\s+on|ran\s+(?:the\s+)?pivot|pivot\s+ran|pumped)\b/g);
+  const logVerb=takeAll(/\b(?:log(?:ged)?|record(?:ed)?|enter(?:ed)?|add(?:ed)?)\b(?:\s+an?\s+irrigation)?/g);
   if(rainVerb){ const a=amt(); if(a==null) return null; act.logRain={date:date||todayStr(), inches:a}; }
+  // An explicit irrigation verb, or a bare "log N inches" with no rain word, is an irrigation log.
+  if(irrVerb || (logVerb && !rainVerb)){ const a=amt(); if(a!=null) act.logIrrigation={date:date||todayStr(), inches:a}; else if(irrVerb) return null; }
 
   if(!Object.keys(set).length && !Object.keys(act).length) return null;
 
+  if(!names.length){
+    if(state.activeId){ const f=state.fields.find(x=>x.id===state.activeId); if(f) names=[f.name]; }
+    else if(state.fields.length===1) names=[state.fields[0].name];   // only one field: no need to name it
+    if(!names.length){ _rulesWhy='nofield'; return null; }
+  }
   // Coverage check: anything left that looks meaningful → let the model do it.
   const rest=s.replace(/\b(?:log|set|change|update|record|enter|add|make|mark|please|the|a|an|of|on|for|to|at|in|with|and|then|its|it|is|was|were|are|be|field|fields|pivot|farm|now|from|by|our|my|we|i|as|so|that|this|there|this|morning|afternoon|last|night|also|too)\b/g,' ')
     .replace(/[^a-z0-9%]+/g,' ').trim();
@@ -4139,10 +4149,6 @@ function assistRules(q){
   if(/\b(?:rename|mute|plant|crop|soil|probe|sensor|alert|strategy|mode|depth|moisture|water|rain|irrigat|efficien|mad|vwc|taw|anchor|delete|remove|import|export|show|open|what|how|when|why|which|should|tomorrow|next)\w*/.test(rest)) return null;
   if(rest.split(' ').filter(Boolean).length>3) return null;
 
-  if(!names.length){
-    if(state.activeId){ const f=state.fields.find(x=>x.id===state.activeId); if(f) names=[f.name]; }
-    if(!names.length) return null;
-  }
   if(set.name!==undefined && names.length!==1) return null;
   const mk=n=>{ const a={field:n}; if(Object.keys(set).length) a.set={...set}; Object.assign(a, act); return a; };
   return {actions:names.map(mk)};
@@ -4304,8 +4310,16 @@ async function llmWarmup(){
     });
 }
 function webgpuUnavailableHtml(){
-  return '<span class="ad-err">The AI assistant needs a browser with WebGPU and a graphics processor.</span>'+
-    '<div class="ad-warn">Quick commands still work here. Try a recent Chrome, Edge, or Safari on another device.</div>';
+  return '<div class="ad-warn" style="margin-top:8px;">Free-form instructions need the AI assistant, which needs WebGPU — a recent Chrome or Edge on a computer, or Safari on iOS 26+.</div>';
+}
+// Explain why a quick command was not understood, with examples that use the user's own field names.
+function quickCommandHelpHtml(){
+  const f=state.fields[0]?state.fields[0].name:'North Pivot';
+  if(_rulesWhy==='nofields') return '<span class="ad-err">Add a field first, then tell the assistant what happened.</span>';
+  if(_rulesWhy==='nofield') return '<span class="ad-err">Which field? Name it as it appears in your list.</span><div class="ad-warn">For example: “'+esc(f)+': log 0.5 inches yesterday”. Or open a field first and leave the name out.</div>';
+  if(/^error/.test(_rulesWhy)) return '<span class="ad-err">Something went wrong reading that.</span><div class="ad-warn">'+esc(_rulesWhy)+'</div>';
+  return '<span class="ad-err">Couldn’t read that as a quick command.</span><div class="ad-warn">Quick commands are one instruction naming a field, for example:<br>'+
+    '“'+esc(f)+': log 0.5 inches yesterday” · “rain 0.4 inches on '+esc(f)+' Monday” · “'+esc(f)+': corn planted May 2, initial moisture 60%” · “mute alerts on '+esc(f)+'” · “'+esc(f)+' probe reads 22% vwc” · “rename '+esc(f)+' to Home 80”.</div>';
 }
 
 // ── voice input — Web Speech API, hard-capped so commands stay short ──
@@ -4353,11 +4367,13 @@ async function assistantSend(){
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   try{
     let parsed=null, via='rules';
-    try{ parsed=assistRules(q); }catch(e){ console.warn('assistRules error', e); parsed=null; }
+    try{ parsed=assistRules(q); }catch(e){ console.warn('assistRules error', e); parsed=null; _rulesWhy='error: '+(e&&e.message||e); }
     // Fall back to the on-device model.
     if(!parsed){
       via='llm';
-      if(!(await webgpuProbe())){ assistShowResult(webgpuUnavailableHtml(), false); return; }
+      // A missing field can't be fixed by the model either — say so first.
+      if(_rulesWhy==='nofields'||_rulesWhy==='nofield'){ assistShowResult(quickCommandHelpHtml(), false); return; }
+      if(!(await webgpuProbe())){ assistShowResult(quickCommandHelpHtml()+webgpuUnavailableHtml(), false); return; }
       const ready=(_llm&&_llmId===llmModelId()) || await llmCached();
       if(!ready){
         assistShowResult('<span class="ad-err">That one needs the AI assistant.</span>'+ASSIST_ENABLE_HTML, false);
